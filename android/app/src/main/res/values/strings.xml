@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">顺手采集</string>
+    <string name="accessibility_description">只读取支付宝和微信的支付结果文字，用于测试能否拿到金额。跳过密码框和输入框，不截屏、不记录按键。</string>
+</resources>
