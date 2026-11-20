@@ -44,9 +44,17 @@ object SampleStore {
 
     fun add(context: Context, sample: PaymentSample) {
         synchronized(items) {
+            val mergedIndex = items.indexOfFirst { PaymentSampleMerge.merge(it, sample) != null }
+            if (mergedIndex >= 0) {
+                items[mergedIndex] = PaymentSampleMerge.merge(items[mergedIndex], sample)!!
+                persist(context)
+                listener?.invoke()
+                return
+            }
             val duplicate = items.any {
-                it.packageName == sample.packageName && it.title == sample.title &&
-                    it.text == sample.text && abs(it.at - sample.at) < 60_000
+                it.note == "not_payment" && sample.note == "not_payment" &&
+                    it.packageName == sample.packageName && it.text == sample.text &&
+                    abs(it.at - sample.at) < 60_000
             }
             if (duplicate) return
             items.add(0, sample.copy(id = sample.id.ifEmpty { UUID.randomUUID().toString() }))

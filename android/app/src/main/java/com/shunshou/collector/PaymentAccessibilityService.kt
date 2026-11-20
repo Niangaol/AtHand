@@ -6,6 +6,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 import android.util.Log
 
 class PaymentAccessibilityService : AccessibilityService() {
+    private var lastProcessedAt = 0L
+    private var lastTextHash = 0
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg !in PaymentParser.supportedPackages) return
@@ -18,7 +21,13 @@ class PaymentAccessibilityService : AccessibilityService() {
         collectText(root, texts, 0)
         if (texts.isEmpty()) return
         val joined = texts.joinToString(" ")
-        if (!PaymentParser.isPaymentLike("", joined)) return
+        if (!PaymentParser.hasAnchor(joined)) return
+        // 页面动画和局部刷新会连续触发事件，600ms 内且文本相同则跳过。
+        val now = android.os.SystemClock.uptimeMillis()
+        val hash = joined.hashCode()
+        if (now - lastProcessedAt < 600 || hash == lastTextHash) return
+        lastProcessedAt = now
+        lastTextHash = hash
 
         val parsed = PaymentParser.parse("", joined, pkg)
         SampleStore.add(

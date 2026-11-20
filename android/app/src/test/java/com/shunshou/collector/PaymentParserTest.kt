@@ -55,6 +55,66 @@ class PaymentParserTest {
     }
 
     @Test
+    fun `parses wechat success screenshot OCR lines`() {
+        val ocr = "支付 成功 待张三确认收款 ¥ 5.00 完成"
+        assertTrue(PaymentParser.hasAnchor(ocr))
+        val parsed = PaymentParser.parse("", ocr, PaymentParser.WECHAT)
+        assertEquals(500L, parsed.amountCents)
+        assertEquals(Direction.EXPENSE, parsed.direction)
+        assertEquals("张三", parsed.merchant)
+    }
+
+    @Test
+    fun `alipay receipt success is income and takes the payer name`() {
+        val text = "收款成功 ¥5.00 付款方：张三 已到账"
+        assertTrue(PaymentParser.hasAnchor(text))
+        val parsed = PaymentParser.parse("", text, PaymentParser.ALIPAY)
+        assertEquals(500L, parsed.amountCents)
+        assertEquals(Direction.INCOME, parsed.direction)
+        assertEquals("张三", parsed.merchant)
+    }
+
+    @Test
+    fun `only transaction result screens are anchored`() {
+        assertTrue(PaymentParser.hasAnchor("转账成功￥5.00 收款方 张三"))
+        assertTrue(PaymentParser.hasAnchor("你领取了张三的红包 0.01元"))
+        assertTrue(PaymentParser.hasAnchor("红包已发出 0.01元"))
+        assertFalse(PaymentParser.hasAnchor("恭喜获得小荷包支付红包 0.68 元 有效期3天"))
+        assertFalse(PaymentParser.hasAnchor("转账 红包 收款 扫一扫 收付款"))
+    }
+
+    @Test
+    fun `alipay transfer success is an expense for the payer`() {
+        val parsed = PaymentParser.parse("", "转账成功￥5.00 收款方： 张三 查看凭证", PaymentParser.ALIPAY)
+        assertEquals(500L, parsed.amountCents)
+        assertEquals(Direction.EXPENSE, parsed.direction)
+        assertEquals("张三", parsed.merchant)
+    }
+
+    @Test
+    fun `recognizes a red packet without a currency sign`() {
+        val parsed = PaymentParser.parse("", "微信红包 0.01", PaymentParser.WECHAT)
+        assertEquals(1L, parsed.amountCents)
+        assertTrue(PaymentParser.isPaymentLike("", "微信红包"))
+    }
+
+    @Test
+    fun `recognizes a received red packet as income`() {
+        val parsed = PaymentParser.parse("", "你领取了张三的红包 0.01元", PaymentParser.WECHAT)
+        assertEquals(1L, parsed.amountCents)
+        assertEquals(Direction.INCOME, parsed.direction)
+        assertEquals("张三", parsed.merchant)
+    }
+
+    @Test
+    fun `recognizes a transfer to a person as expense`() {
+        val parsed = PaymentParser.parse("", "转账给李四 ¥0.01", PaymentParser.WECHAT)
+        assertEquals(1L, parsed.amountCents)
+        assertEquals(Direction.EXPENSE, parsed.direction)
+        assertEquals("李四", parsed.merchant)
+    }
+
+    @Test
     fun `does not treat a year as money`() {
         val parsed = PaymentParser.parse("账单", "2026 年度账单已生成", PaymentParser.ALIPAY)
         assertNull(parsed.amountCents)
