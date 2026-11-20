@@ -58,8 +58,17 @@ object PaymentParser {
     private val resultPatterns = listOf(
         Regex("转账成功"), Regex("支付成功"), Regex("付款成功"), Regex("收款成功"),
         Regex("已收款"), Regex("领取了[^，,。\\s]{1,24}红包"), Regex("红包已领取"),
-        Regex("红包已发出"), Regex("已发出红包"),
+        Regex("红包已发出"), Regex("已发出红包"), Regex("已存入零钱"), Regex("已到账"), Regex("到账金额"),
     )
+
+    /** 红包在指纹确认后会直接退出，没有成功页；支付前这张确认单是最后一个稳定界面。 */
+    private fun isRedPacketConfirm(text: String): Boolean =
+        text.contains("微信红包") && (text.contains("付款方式") || text.contains("使用密码"))
+
+    /** 所有微信支付在指纹前都会经过这张确认单，可作为统一入口先记“待确认”。 */
+    private fun isConfirmSheet(text: String): Boolean =
+        (text.contains("付款方式") || text.contains("使用密码")) &&
+            text.contains("支付") && !text.contains("支付成功")
     private val merchantPatterns = listOf(
         Regex("""收款方[：:]?\s*([^，,。\s]{1,24})"""),
         Regex("""付款方[：:]?\s*([^，,。\s]{1,24})"""),
@@ -89,7 +98,7 @@ object PaymentParser {
     /** 只有交易结果锚点才计入账本；菜单、广告里的“转账/红包”不算。 */
     fun hasAnchor(text: String): Boolean {
         val normalized = normalize(text)
-        return anchorPatterns.any { it.containsMatchIn(normalized) }
+        return isConfirmSheet(normalized) || anchorPatterns.any { it.containsMatchIn(normalized) }
     }
 
     /** 成功页的优先级高于支付前页面，用于同金额合并时保留更可信的方向。 */
@@ -105,15 +114,24 @@ object PaymentParser {
     fun parse(title: String, text: String, packageName: String): ParsedPayment {
         val raw = (title + " " + text).trim()
         val joined = normalize(raw)
-        val cents = (moneySign.find(joined) ?: yuanSuffix.find(joined) ?: bareAmount.find(joined))?.let {
+        val redPacketConfirm = isRedPacketConfirm(joined)
+        val confirmSheet = isConfirmSheet(joined)
+        // 确认单上方可能还有未输完的金额，取最后一个（底部确认单的 ¥5.00）。
+        val amountMatch = if (confirmSheet) {
+            moneySign.findAll(joined).lastOrNull() ?: yuanSuffix.findAll(joined).lastOrNull() ?: bareAmount.find(joined)
+        } else {
+            moneySign.find(joined) ?: yuanSuffix.find(joined) ?: bareAmount.find(joined)
+        }
+        val cents = amountMatch?.let {
             runCatching {
                 BigDecimal(it.groupValues[1]).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValueExact()
             }.getOrNull()
         }
         val direction = when {
             joined.contains("退款") -> Direction.REFUND
-            // 收款凭据上的“付款方”是对方，说明钱是收进来的。
-            joined.contains("付款方") -> Direction.INCOME
+            // 收款凭据上的“付款方”是对方，说明钱是收进来的；“付款方式”不是。
+            joined.contains("付款方") && !joined.contains("付款方式") -> Direction.INCOME
+            confirmSheet -> Direction.EXPENSE
             joined.contains("转账成功") && (joined.contains("收款方") || joined.contains("付款方式")) -> Direction.EXPENSE
             Regex("""向[^，,。\s]{1,24}转账""").containsMatchIn(joined) -> Direction.EXPENSE
             listOf("转账给", "已转账", "发出红包", "红包已发出", "已发出红包", "发给", "已被接收").any { joined.contains(it) } -> Direction.EXPENSE
@@ -122,10 +140,17 @@ object PaymentParser {
             listOf("收款成功", "已收款", "你已收款", "到账", "入账", "收到", "已收钱", "领取了", "已存入零钱", "收钱", "付款方", "已到账", "到账金额", "收款到账").any { joined.contains(it) } -> Direction.INCOME
             else -> Direction.UNKNOWN
         }
-        val merchant = merchantPatterns.firstNotNullOfOrNull { pattern ->
-            pattern.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
-        } ?: title.trim().ifEmpty { appName(packageName) }
-        return ParsedPayment(cents, direction, merchant, if (cents == null) "no_amount" else "")
+        val merchant = if (redPacketConfirm) "微信红包" else {
+            merchantPatterns.firstNotNullOfOrNull { pattern ->
+                pattern.find(raw)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+            } ?: title.trim().ifEmpty { appName(packageName) }
+        }
+        val note = when {
+            confirmSheet -> "pending_confirm"
+            cents == null -> "no_amount"
+            else -> ""
+        }
+        return ParsedPayment(cents, direction, merchant, note)
     }
 
     fun directionLabel(direction: Direction): String = when (direction) {

@@ -65,6 +65,27 @@ class PaymentParserTest {
     }
 
     @Test
+    fun `reads the wechat red packet confirmation sheet as pending expense`() {
+        val text = "发红包 金额 ¥5. 微信红包 ¥ 5.00 付款方式 零钱 支付 使用密码"
+        assertTrue(PaymentParser.hasAnchor(text))
+        val parsed = PaymentParser.parse("", text, PaymentParser.WECHAT)
+        assertEquals(500L, parsed.amountCents)
+        assertEquals(Direction.EXPENSE, parsed.direction)
+        assertEquals("微信红包", parsed.merchant)
+        assertEquals("pending_confirm", parsed.note)
+    }
+
+    @Test
+    fun `reads a general wechat confirm sheet as pending expense`() {
+        val text = "转账 ¥5.00 付款方式 零钱 支付 使用密码"
+        assertTrue(PaymentParser.hasAnchor(text))
+        val parsed = PaymentParser.parse("", text, PaymentParser.WECHAT)
+        assertEquals(500L, parsed.amountCents)
+        assertEquals(Direction.EXPENSE, parsed.direction)
+        assertEquals("pending_confirm", parsed.note)
+    }
+
+    @Test
     fun `alipay receipt success is income and takes the payer name`() {
         val text = "收款成功 ¥5.00 付款方：张三 已到账"
         assertTrue(PaymentParser.hasAnchor(text))

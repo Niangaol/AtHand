@@ -174,6 +174,7 @@ class MainActivity : Activity() {
                 setPadding(0, dp(5), 0, 0)
             })
             if (sample.note == "no_amount") card.addView(label("⚠ 未能从这段文字提取金额", 11f, Color.parseColor("#A05A2C")))
+            if (sample.note == "pending_confirm") card.addView(label("⚠ 红包支付确认页，尚未确认是否发出；账单到达后会合并", 11f, Color.parseColor("#A05A2C")))
             samplesView.addView(card, cardParams())
         }
     }
@@ -314,35 +315,19 @@ class MainActivity : Activity() {
             toast("没读到文字，可能是安全页面")
             return
         }
-        val joined = snapshot.texts.joinToString(" ")
-        val anchored = PaymentParser.hasAnchor(joined)
-        if (!anchored && !PaymentParser.isPaymentLike("", joined)) {
+        val sample = SnapshotProcessor.process(
+            snapshot.packageName, snapshot.texts, System.currentTimeMillis()
+        )
+        if (sample == null) {
             toast("当前页面没有支付文字")
             return
         }
-        val parsed = PaymentParser.parse("", joined, snapshot.packageName)
-        val note = when {
-            !anchored -> "not_payment"
-            parsed.amountCents == null -> "no_amount"
-            else -> ""
-        }
-        // 探针阶段连未匹配的屏幕也保存，方便按真实文案改规则。
-        SampleStore.add(this, PaymentSample(
-            id = "shizuku:${snapshot.packageName}:${System.currentTimeMillis()}",
-            packageName = snapshot.packageName,
-            title = if (anchored) "Shizuku 读屏" else "未识别屏幕",
-            text = joined.take(500),
-            at = System.currentTimeMillis(),
-            amountCents = parsed.amountCents,
-            direction = parsed.direction,
-            merchant = parsed.merchant,
-            source = Source.SHIZUKU,
-            note = note,
-        ))
+        SampleStore.add(this, sample)
         toast(
-            when {
-                !anchored -> "已保存原始屏幕，但没匹配到交易结果"
-                parsed.amountCents == null -> "已记录，但未识别金额"
+            when (sample.note) {
+                "not_payment" -> "已保存原始屏幕，但没匹配到交易结果"
+                "no_amount" -> "已记录，但未识别金额"
+                "pending_confirm" -> "已记录待确认：完成支付后保留账单"
                 else -> "已记录"
             }
         )
