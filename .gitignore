@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.vite/
+coverage/
+test-results/
+playwright-report/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+.idea/
+*.log
+.env
+.env.*
+!.env.example
