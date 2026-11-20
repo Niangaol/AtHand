@@ -21,7 +21,7 @@ describe('application foundation', () => {
     expect(screen.getByRole('heading', { name: '把这一周，过得心里有数。' })).toBeInTheDocument();
     expect(screen.getByText('示例模式')).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: '主导航' });
-    for (const name of ['今天', '记一笔', '周账单', '单位管理', '月度汇总', '设置']) {
+    for (const name of ['今天', '记一笔', '周账单', '单位管理', '月度汇总', '校园', '设置']) {
       expect(within(nav).getByRole('link', { name })).toBeInTheDocument();
     }
   });

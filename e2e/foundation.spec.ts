@@ -59,7 +59,7 @@ test('small ledger labels meet readable text contrast', async ({ page }) => {
 
 test('mobile pages fit 375px and navigation stays usable', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const path of ['/', '/ledger', '/entry', '/workplaces', '/monthly', '/settings']) {
+  for (const path of ['/', '/ledger', '/entry', '/workplaces', '/monthly', '/campus', '/settings']) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     const sizes = await page.evaluate(() => ({ viewport: window.innerWidth, content: document.documentElement.scrollWidth }));

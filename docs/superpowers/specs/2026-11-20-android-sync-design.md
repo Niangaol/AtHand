@@ -162,6 +162,21 @@ v0.2 的每一笔都要手动输入。v0.3 改为：**手机自动收取支付�
 - **第二阶段复用**：网页或云端函数把“今天有什么课/考试”转给 HDU-Helper，沿用它的 `state/warnings/is_demo` 透传，不在顺手里另存学校凭据。
 - 任何演示数据都必须带 `is_demo` 标注，不能当成真实课表。
 
+## 11.2 本机接入已落地（2026-11-20）
+
+实测确认的实现细节，后续改动不要再踩：
+
+- `wechat-bot/vendor/hdu-helper` 的 Web 入口只认 **cookie + CSRF**，Bearer 尚未实现；`WEB_ACCESS_TOKEN` 实际是登录口令（≥32 字符）。
+- Web 入口强制 `Host` 为 `localhost/127.0.0.1`，并要求 `Origin` 与 Host 一致。因此顺手用 Vite 的 `/web` 同源代理（`HDU_HELPER_URL`，默认 `http://127.0.0.1:8000`），代理改写 `Origin`；cookie 的 `Path=/web` 正好匹配。**部署到 Sites 的公网版无法访问本机服务**，校园页会明确显示本机限制。
+- 个人数据默认被 `personal_data_allowed()` 硬拒绝，Web 请求固定为 `web_unverified`、`personal_queries:false`。新增了默认关闭的 `WEB_OWNER_BINDING`：
+  - 仅当 `WEB_ENABLED` 同时开启、Host 已受限于 localhost 时才可启用；
+  - 仅 `channel=web` 且 `trusted_owner=true` 才放行，其他渠道即使伪造该字段也拒绝；
+  - 能力响应同步返回 `personal_queries`。
+- `run_cli()` 原先只允许 public 能力，个人能力即使白名单已核验也会返回 `unsupported`。已增加 `allow_personal` 参数，只由通过 `personal_data_allowed` 与 `user_allowed` 校验的工具层传入；普通调用仍拒绝。
+- CLI 的配置环境变量是 `HDUHELP_CLI_CONFIG`，且必须指向 **`config.json` 文件**；指向目录会报 `read <dir>: Incorrect function`。项目 `.env` 里的 `HDUHELP_CLI_PATH` 曾指向已搬走的目录，需指到 `vendor/hdu-helper/tools/hduhelp-cli/hduhelp-cli.exe`。
+- 真机/本机验证：`WEB_OWNER_BINDING=true` + 正确 CLI 路径后，“今天有什么课”返回真实课表（高等数学 A1、智科与人工智能学科导论），`is_demo=false`，无警告。
+- 口令只存浏览器 `sessionStorage`；仓库、账单和云端都不落。
+
 ## 12. 验收
 
 - 通知：同一条支付通知重复回调，只产生一笔；解析失败不产生金额。
