@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>顺手后端探测</title>
+  <style>
+    :root {
+      --site-bg: #f5f7f4;
+      --site-fg: #24382d;
+      --site-accent: #295c48;
+      --site-on-accent: #ffffff;
+      --site-surface: #ffffff;
+      --site-muted: #65746a;
+      --site-border: #e6ebe4;
+      --site-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --site-radius: 12px;
+      --site-space: 1;
+      --site-type: 1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--site-bg); color: var(--site-fg);
+      font-family: var(--site-font); display: grid; place-items: center; padding: 24px;
+    }
+    main {
+      width: min(680px, 100%); background: var(--site-surface);
+      border: 1px solid var(--site-border); border-radius: var(--site-radius);
+      padding: calc(28px * var(--site-space)); box-shadow: 0 18px 50px #17362314;
+    }
+    h1 { font-size: calc(28px * var(--site-type)); margin: 0 0 8px; letter-spacing: -0.5px; }
+    p { color: var(--site-muted); line-height: 1.8; margin: 0 0 18px; }
+    .row { display: grid; gap: 12px; margin: 18px 0; }
+    .card { border: 1px solid var(--site-border); border-radius: calc(var(--site-radius) - 4px); padding: 14px 16px; }
+    .card strong { display: block; font-size: 13px; margin-bottom: 6px; }
+    .card code, .card pre { font-size: 12px; color: var(--site-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .card pre { margin: 0; }
+    .ok { color: var(--site-accent); font-weight: 700; }
+    .bad { color: #a04437; font-weight: 700; }
+    button {
+      border: 0; border-radius: calc(var(--site-radius) - 4px); padding: 12px 18px;
+      background: var(--site-accent); color: var(--site-on-accent); font: inherit; cursor: pointer;
+      min-height: 44px;
+    }
+    button:focus-visible { outline: 3px solid #ba8629; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>顺手 · 后端能力探测</h1>
+    <p>这个页面只做一件事：证明 Qoder Sites 能否同时托管静态页和可执行函数。</p>
+
+    <div class="row">
+      <div class="card"><strong>静态页面</strong><span class="ok">已从站点加载</span></div>
+      <div class="card"><strong>函数响应</strong><pre id="result">请求中…</pre></div>
+    </div>
+
+    <button id="again" type="button">再请求一次</button>
+  </main>
+
+  <script>
+    const result = document.querySelector('#result');
+    async function ask() {
+      result.textContent = '请求中…';
+      try {
+        const response = await fetch('/functions/v1/app?name=Visitor', {
+          headers: { accept: 'application/json' },
+          credentials: 'same-origin',
+        });
+        const text = await response.text();
+        let body;
+        try { body = JSON.parse(text); } catch { body = { raw: text.slice(0, 200) }; }
+        if (!response.ok || !body || body.ok !== true) {
+          result.textContent = `失败 ${response.status}\n${JSON.stringify(body, null, 2)}`;
+          return;
+        }
+        result.textContent = `成功 ${response.status}\n${JSON.stringify(body, null, 2)}`;
+      } catch (error) {
+        result.textContent = `网络错误：${error.message}`;
+      }
+    }
+    document.querySelector('#again').addEventListener('click', ask);
+    ask();
+  </script>
+</body>
+</html>

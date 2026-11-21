@@ -141,6 +141,7 @@ v0.2 的每一笔都要手动输入。v0.3 改为：**手机自动收取支付�
 
 ## 9. 云端
 
+- **2026-11-21 实测**：Qoder Sites 支持 Deno Edge Function、数据库迁移/读写、Storage 与 Secrets，前端同源调用 `/functions/v1/app`；但当前账号 `backend_sites` 配额为 0，准备带函数的草稿返回 `sites_quota_exceeded`（used 0, limit 0）。删除静态站不改变后端额度。要落地云端账本，需开通 Qoder 后端配额，或改用外部后端（如 Supabase/Cloudflare），否则只能静态托管、数据留在本机。
 - Sites 项目 + 数据库迁移 + 一个 `/api/sync` 函数；令牌放 Sites Secret，函数内常量时间比较。
 - 数据库只允许函数用服务端密钥访问；前端永远不直连数据库。
 - 只存金额、商户、时间、分类、日程标题与地点；不存通知原文、账号、设备通讯录。
