@@ -1,5 +1,31 @@
 import { test, expect } from '@playwright/test';
 
+test('maintains a sourced service directory from a mobile screen', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/campus');
+  await page.getByRole('button', { name: '新增事项' }).click();
+  await page.getByLabel('事项名称', { exact: true }).fill('我的图书续借路径');
+  await page.getByLabel('事项分类').fill('图书馆');
+  await page.getByLabel('入口形式').selectOption('wechat');
+  await page.getByLabel('入口地址或名称').fill('测试图书馆');
+  await page.getByLabel('办理步骤').fill('打开公众号，进入我的借阅。');
+  await page.getByRole('button', { name: '保存事项' }).click();
+  await page.getByRole('link', { name: '我的图书续借路径', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '结论', exact: true })).toBeVisible();
+  await expect(page.getByText('能否现在办理未确认', { exact: true })).toBeVisible();
+  await expect(page.getByText('缺少公开出处，请先核实再办理。', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '编辑事项' }).click();
+  await page.getByLabel('来源网址').fill('https://example.com/official');
+  await page.getByLabel('核实日期').fill('2020-01-01');
+  await page.getByRole('button', { name: '保存事项' }).click();
+  await expect(page.getByText(/超过30天未核实/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('link', { name: '查看原始出处' })).toHaveAttribute('href', 'https://example.com/official');
+  await page.getByRole('button', { name: '删除事项' }).click();
+  await page.getByRole('button', { name: '确认删除' }).click();
+  await expect(page.getByRole('link', { name: '我的图书续借路径', exact: true })).toHaveCount(0);
+});
+
 const password = 'p'.repeat(32);
 const answer = {
   request_id: 'r', state: 'COMPLETED', route: 'timetable_today',

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { toDateKey } from '../domain/dates';
+import { guardedSave } from './guardedSave';
+import { useLocalToday } from './useLocalToday';
 import { buildRecord, buildWorkplace, parseAmount } from '../domain/ledger';
 import type { RecordDraft } from '../domain/ledger';
 import type { LedgerState, RecordEntry } from '../domain/records';
@@ -49,7 +50,8 @@ function sameLedger(left: LedgerState, right: LedgerState): boolean {
 export function RecordsProvider({ initialState, today: fixedToday, storage = browserStorage, children }: {
   initialState?: LedgerState; today?: string; storage?: StoragePort; children: ReactNode;
 }) {
-  const today = fixedToday ?? toDateKey(new Date());
+  const localToday = useLocalToday();
+  const today = fixedToday ?? localToday;
   const [loaded] = useState(() => initialState ? { state: initialState, raw: null, error: '' } : loadLedger(storage, today));
   const [state, setState] = useState(loaded.state);
   const [error, setError] = useState(loaded.error);
@@ -69,8 +71,8 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
   async function applyExternal(next: LedgerState): Promise<Result> {
     try {
       if (!navigator.locks) throw new Error('当前浏览器不支持安全的本地写入，请使用新版浏览器并通过 HTTPS 打开。');
-      return await navigator.locks.request(STORAGE_KEY, () => {
-        rawRef.current = saveLedger(storage, next, rawRef.current);
+      return await navigator.locks.request(STORAGE_KEY, async () => {
+        rawRef.current = storage === browserStorage ? await guardedSave(STORAGE_KEY, rawRef.current, () => saveLedger(storage, next, rawRef.current)) : saveLedger(storage, next, rawRef.current);
         stateRef.current = next;
         setState(next);
         setError('');
@@ -220,9 +222,9 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
     try {
       if (blocked && !recovery) throw new Error(loaded.error || '账本暂不可写入，请刷新后重试。');
       if (!navigator.locks) throw new Error('当前浏览器不支持安全的本地写入，请使用新版 Chrome、Edge、Firefox 或 Safari，并通过本机地址或 HTTPS 打开。');
-      const result = await navigator.locks.request(STORAGE_KEY, () => {
+      const result = await navigator.locks.request(STORAGE_KEY, async () => {
         const next = change(stateRef.current);
-        rawRef.current = saveLedger(storage, next, rawRef.current);
+        rawRef.current = storage === browserStorage ? await guardedSave(STORAGE_KEY, rawRef.current, () => saveLedger(storage, next, rawRef.current), recovery) : saveLedger(storage, next, rawRef.current);
         stateRef.current = next;
         setState(next);
         setError('');

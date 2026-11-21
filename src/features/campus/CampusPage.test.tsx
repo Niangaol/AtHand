@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { PlannerProvider } from '../../data/PlannerProvider';
 import { CampusPage } from './CampusPage';
 import { resetHduSession } from './hduClient';
 
@@ -22,7 +24,7 @@ afterEach(() => { vi.unstubAllGlobals(); resetHduSession(); sessionStorage.clear
 
 it('asks the local HDU helper and surfaces demo data and warnings', async () => {
   stubHdu({ demo: true, warnings: ['hduhelp_cli_missing'] });
-  render(<CampusPage />);
+  render(<MemoryRouter><PlannerProvider><CampusPage /></PlannerProvider></MemoryRouter>);
   await userEvent.setup().type(screen.getByLabelText('HDU-Helper 访问口令'), password);
   await userEvent.setup().click(screen.getByRole('button', { name: '今天有什么课' }));
   expect(await screen.findByText(text)).toBeInTheDocument();
@@ -36,14 +38,14 @@ it('asks the local HDU helper and surfaces demo data and warnings', async () => 
 
 it('shows an actionable error for a wrong password', async () => {
   stubHdu({ status: 401 });
-  render(<CampusPage />);
+  render(<MemoryRouter><PlannerProvider><CampusPage /></PlannerProvider></MemoryRouter>);
   await userEvent.setup().type(screen.getByLabelText('HDU-Helper 访问口令'), password);
   await userEvent.setup().click(screen.getByRole('button', { name: '今天有什么课' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('口令无效');
 });
 
 it('states the campus boundary and never promises submission', () => {
-  render(<CampusPage />);
+  render(<MemoryRouter><PlannerProvider><CampusPage /></PlannerProvider></MemoryRouter>);
   expect(screen.getByText(/仍只监听本机/)).toBeInTheDocument();
   expect(screen.getByText(/不代提交/)).toBeInTheDocument();
 });

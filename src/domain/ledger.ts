@@ -1,6 +1,6 @@
-import { toDateKey } from './dates';
-import { expenseCategories } from './records';
-import type { ExpenseCategory, RecordEntry, Workplace } from './records';
+import { toDateKey } from './dates.ts';
+import { expenseCategories } from './records.ts';
+import type { ExpenseCategory, RecordEntry, Workplace } from './records.ts';
 
 export type RecordDraft = {
   type: 'work' | 'expense'; date: string; title: string; workplaceId: string;

@@ -1,11 +1,26 @@
-import { CalendarDays, GraduationCap, House, NotebookPen, ReceiptText, Settings2, Store } from 'lucide-react';
+import { CalendarDays, GraduationCap, House, MapPin, NotebookPen, ReceiptText, Settings2, Sparkles, Store, Timer } from 'lucide-react';
 
-export const navigation = [
-  { path: '/', label: '今天', icon: House },
-  { path: '/entry', label: '记一笔', icon: NotebookPen },
-  { path: '/ledger', label: '周账单', icon: ReceiptText },
-  { path: '/workplaces', label: '单位管理', icon: Store },
-  { path: '/monthly', label: '月度汇总', icon: CalendarDays },
-  { path: '/campus', label: '校园', icon: GraduationCap },
-  { path: '/settings', label: '设置', icon: Settings2 },
+export const assistantNav = { path: '/assistant', label: '助手', icon: Sparkles };
+
+export const navigationGroups = [
+  { title: '学习与节奏', items: [
+    { path: '/', label: '今天', icon: House },
+    { path: '/focus', label: '专注', icon: Timer },
+    { path: '/schedule', label: '日程', icon: CalendarDays },
+  ] },
+  { title: '钱与时间', items: [
+    { path: '/entry', label: '记一笔', icon: NotebookPen },
+    { path: '/ledger', label: '周账单', icon: ReceiptText },
+    { path: '/workplaces', label: '单位管理', icon: Store },
+    { path: '/monthly', label: '月度汇总', icon: CalendarDays },
+  ] },
+  { title: '校园与远方', items: [
+    { path: '/campus', label: '校园', icon: GraduationCap },
+    { path: '/trips', label: '旅记', icon: MapPin },
+  ] },
+  { title: '数据与设置', items: [
+    { path: '/settings', label: '设置', icon: Settings2 },
+  ] },
 ];
+
+export const navigation = [assistantNav, ...navigationGroups.flatMap((group) => group.items)];

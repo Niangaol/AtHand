@@ -10,6 +10,14 @@ class PaymentAccessibilityService : AccessibilityService() {
     private var lastTextHash = 0
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        try {
+            handle(event)
+        } catch (error: Throwable) {
+            Log.w("ShunshouProbe", "a11y failed: ${error.message}", error)
+        }
+    }
+
+    private fun handle(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg !in PaymentParser.supportedPackages) return
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
@@ -17,6 +25,9 @@ class PaymentAccessibilityService : AccessibilityService() {
         ) return
 
         val root = rootInActiveWindow ?: return
+        // 事件来自 A，但活动窗口可能是切换中的 B（例如最近任务），避免串页。
+        val rootPackage = root.packageName?.toString()
+        if (rootPackage != null && rootPackage != pkg) return
         val texts = mutableListOf<String>()
         collectText(root, texts, 0)
         if (texts.isEmpty()) return
@@ -29,23 +40,14 @@ class PaymentAccessibilityService : AccessibilityService() {
         lastProcessedAt = now
         lastTextHash = hash
 
-        val parsed = PaymentParser.parse("", joined, pkg)
-        SampleStore.add(
-            this,
-            PaymentSample(
-                id = "a11y:$pkg:${event.eventTime}:${joined.hashCode()}",
-                packageName = pkg,
-                title = "屏幕文字",
-                text = joined.take(300),
-                at = event.eventTime,
-                amountCents = parsed.amountCents,
-                direction = parsed.direction,
-                merchant = parsed.merchant,
-                source = Source.ACCESSIBILITY,
-                note = parsed.note,
-            )
-        )
-        Log.i("ShunshouProbe", "accessibility amount=${parsed.amountCents} direction=${parsed.direction} app=${PaymentParser.appName(pkg)}")
+        // eventTime 是开机时长；样本时间必须用墙上时钟，否则导入日期会错。
+        val sample = SnapshotProcessor.process(pkg, texts, System.currentTimeMillis())?.copy(
+            id = "a11y:$pkg:${event.eventTime}:${joined.hashCode()}",
+            title = "屏幕文字",
+            source = Source.ACCESSIBILITY,
+        ) ?: return
+        SampleStore.add(this, sample)
+        Log.i("ShunshouProbe", "accessibility amount=${sample.amountCents} direction=${sample.direction} app=${PaymentParser.appName(pkg)}")
     }
 
     private fun collectText(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {

@@ -5,6 +5,7 @@ coverage/
 test-results/
 playwright-report/
 local-sync/data/
+.tmp*/
 /nul
 
 # Android

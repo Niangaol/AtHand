@@ -87,6 +87,7 @@ export async function gatewayLogin(url: string, password: string): Promise<Gatew
   write(URL_KEY, base);
   write(TOKEN_KEY, session.token);
   write(EXPIRES_KEY, String(session.expiresAt));
+  window.dispatchEvent(new Event('shunshou-gateway-change'));
   return session;
 }
 

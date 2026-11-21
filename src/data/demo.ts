@@ -1,5 +1,5 @@
-import { getWeekRange, shiftDate } from '../domain/dates';
-import type { RecordEntry, Workplace } from '../domain/records';
+import { getWeekRange, shiftDate } from '../domain/dates.ts';
+import type { RecordEntry, Workplace } from '../domain/records.ts';
 
 export const demoWorkplaces: Workplace[] = [
   { id: 'tea', name: '校园奶茶店', hourlyRateCents: 2000, source: 'demo', description: '课后的几个小时，也有自己的收获。' },

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CircleAlert, ExternalLink, GraduationCap, Info, Search } from 'lucide-react';
+import { ServiceDirectory } from './ServiceDirectory';
 import { PageHeading } from '../../components/PageHeading';
 import { askHdu, HduError } from './hduClient';
 import type { HduAnswer } from './hduClient';
@@ -44,6 +45,8 @@ export function CampusPage() {
 
   return <>
     <PageHeading title="校园里的事，也顺手问。" description="课表、考试、成绩由本机的杭电助手回答；顺手只展示，不代你提交任何申请。" />
+    <ServiceDirectory />
+    <h2 className="planner-spaced">个人校园问答</h2><p className="form-hint">以下是助手原始回答，不自动转成已核实的办事建议或结构化课表。</p>
     <div className="campus-layout">
       <section className="panel campus-panel">
         <div className="campus-connect"><span className="workplace-icon"><GraduationCap size={25} /></span><div><h2>连接本机杭电助手</h2><p>在 HDU-Helper 目录启动服务，把访问口令填在这里。查个人课表需以 <code>WEB_OWNER_BINDING=true</code> 启动（默认关闭），并确认 <code>HDUHELP_CLI_PATH</code> 指向实际的 CLI。</p></div></div>

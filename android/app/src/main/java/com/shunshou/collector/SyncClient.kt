@@ -7,6 +7,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class GatewaySession(val token: String, val expiresAt: Long)
+class SyncHttpException(val status: Int) : IllegalStateException("同步失败 HTTP $status")
+fun syncIdentity(baseUrl: String, password: String): String = java.security.MessageDigest.getInstance("SHA-256")
+    .digest("${baseUrl.trim().trimEnd('/')}\n$password".toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
 
 object SyncClient {
     private const val DEFAULT_URL = "http://127.0.0.1:18787"
@@ -21,6 +24,7 @@ object SyncClient {
         val connection = URL("$base/api/login").openConnection() as HttpURLConnection
         return try {
             connection.requestMethod = "POST"
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 5_000
             connection.readTimeout = 10_000
             connection.doOutput = true
@@ -61,12 +65,17 @@ object SyncClient {
         return request(baseUrl, "POST", array.toString(), token)
     }
 
-    private fun request(baseUrl: String, method: String, body: String?, token: String?): String {
+    fun calendars(baseUrl: String, token: String): JSONObject = JSONObject(request(baseUrl, "GET", null, token, "/api/calendar"))
+
+    fun uploadCalendar(baseUrl: String, token: String, body: String): JSONObject = JSONObject(request(baseUrl, "PUT", body, token, "/api/calendar/snapshot"))
+
+    private fun request(baseUrl: String, method: String, body: String?, token: String?, path: String = if (method == "GET") "/api/health" else "/api/samples"): String {
         val base = urlOrDefault(baseUrl).trimEnd('/')
-        val endpoint = URL(if (method == "GET") "$base/api/health" else "$base/api/samples")
+        val endpoint = URL("$base$path")
         val connection = endpoint.openConnection() as HttpURLConnection
         return try {
             connection.requestMethod = method
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 5_000
             connection.readTimeout = 10_000
             connection.setRequestProperty("Accept", "application/json")
@@ -79,7 +88,7 @@ object SyncClient {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) throw IllegalStateException("HTTP $code: ${text.take(120)}")
+            if (code !in 200..299) throw SyncHttpException(code)
             text
         } finally {
             connection.disconnect()
@@ -94,10 +103,17 @@ object SyncSession {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val cached = prefs.getString("syncToken", null)
         val expiresAt = prefs.getLong("syncTokenExpires", 0L)
-        if (!cached.isNullOrBlank() && expiresAt > System.currentTimeMillis() + 60_000) return cached
+        val identity = syncIdentity(SyncClient.urlOrDefault(baseUrl), password)
+        if (prefs.getString("syncTokenIdentity", null) == identity && !cached.isNullOrBlank() && expiresAt > System.currentTimeMillis() + 60_000) return cached
         if (password.isBlank()) throw IllegalStateException("请先填访问口令")
         val session = SyncClient.login(baseUrl, password)
-        prefs.edit().putString("syncToken", session.token).putLong("syncTokenExpires", session.expiresAt).apply()
+        prefs.edit().putString("syncToken", session.token).putLong("syncTokenExpires", session.expiresAt).putString("syncTokenIdentity", identity).apply()
         return session.token
+    }
+
+    /** 网关换口令或重启后旧令牌会失效；清掉缓存，下次调用会重新登录。 */
+    fun clear(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove("syncToken").remove("syncTokenExpires").apply()
     }
 }

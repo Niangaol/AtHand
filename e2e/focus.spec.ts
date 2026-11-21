@@ -1,0 +1,52 @@
+import { test, expect } from '@playwright/test';
+
+test('focus survives refresh, pause and a second tab without duplicate completion', async ({ page, context }) => {
+  await page.clock.install({ time: new Date('2026-11-21T10:00:00+08:00') });
+  await page.goto('/focus');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('一次，只做好一件事。');
+  await page.getByLabel('正在做什么').fill('复习高等数学');
+  await page.getByLabel('计划分钟').fill('1');
+  await page.getByRole('button', { name: '开始专注', exact: true }).click();
+  await expect(page.getByText('正在专注', { exact: true })).toBeVisible();
+  await expect(page.getByRole('timer')).toHaveText('01:00');
+  await page.clock.fastForward(20_000);
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  await expect(page.getByText('已暂停', { exact: true })).toBeVisible();
+  await page.clock.fastForward(60_000);
+  await expect(page.getByRole('timer')).toHaveText('00:40');
+  await page.reload();
+  await expect(page.getByRole('timer')).toHaveText('00:40');
+  await page.getByRole('button', { name: '在此窗口接管' }).click();
+  await page.getByRole('button', { name: '继续专注' }).click();
+  await expect(page.getByText('正在专注', { exact: true })).toBeVisible();
+  await page.clock.fastForward(45_000);
+  await expect(page.getByRole('button', { name: '开始专注', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: '专注记录' }).getByText('复习高等数学')).toHaveCount(1);
+  const second = await context.newPage();
+  await second.goto('/focus');
+  await expect(second.getByRole('region', { name: '专注记录' }).getByText('复习高等数学')).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByRole('region', { name: '专注记录' }).getByText('复习高等数学')).toHaveCount(1);
+  await second.close();
+});
+
+test('focus form works on mobile and rejects an empty task', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/focus');
+  await page.getByRole('button', { name: '开始专注', exact: true }).click();
+  await expect(page.getByLabel('正在做什么')).toBeFocused();
+  await page.getByLabel('正在做什么').fill('读书');
+  await page.getByRole('button', { name: '开始专注', exact: true }).click();
+  await page.getByRole('button', { name: '结束本次' }).click();
+  await page.getByRole('button', { name: '确认结束' }).click();
+  await expect(page.getByRole('region', { name: '专注记录' }).getByText('已结束（未完成）')).toBeVisible();
+  await page.getByLabel('导入生活记录备份').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ version: 1, events: [], courseRules: [], focusSessions: [], countdowns: [], trips: [], serviceEntries: [], preferences: { focusMinutes: 45 }, reminderReceipts: [] })) });
+  await expect(page.getByRole('dialog')).toContainText('覆盖');
+  await page.getByRole('button', { name: '确认恢复' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel('计划分钟')).toHaveValue('45');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: 'test-results/focus-mobile.png', fullPage: true });
+});

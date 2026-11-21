@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test';
 
-const gateway = process.env.GATEWAY_URL ?? 'http://127.0.0.1:18787';
-const password = process.env.GATEWAY_PASSWORD ?? '';
+import { startGateway } from './gatewayFixture';
+let gateway = '';
+let password = '';
+let stop: () => Promise<void>;
+test.beforeAll(async () => { const fixture = await startGateway(); gateway = fixture.url; password = fixture.password; stop = fixture.stop; });
+test.afterAll(async () => { await stop?.(); });
 
 test.describe('电脑作服务器的登录与同步', () => {
-  test.skip(!password, '需要 GATEWAY_PASSWORD 指向本机网关口令。');
 
   test('登录、跨设备读取账本并导入手机样本', async ({ page, browser }) => {
     await page.goto('/settings');

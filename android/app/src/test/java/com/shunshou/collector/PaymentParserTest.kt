@@ -105,6 +105,30 @@ class PaymentParserTest {
     }
 
     @Test
+    fun `alipay home message card is not a transaction result`() {
+        val card = "杭州电子科技大学 付款成功￥15.90 4小时前 点击查看全部消息 首页 理财 消息 我的"
+        assertFalse(PaymentParser.hasAnchor(card))
+    }
+
+    @Test
+    fun `success page with a done button is anchored`() {
+        assertTrue(PaymentParser.hasAnchor("支付成功 12.50元 完成"))
+    }
+
+    @Test
+    fun `alipay payment code page is not a confirm sheet`() {
+        val page = "收付款 支付有礼 向商家付款 条形码 二维码 亲情卡 优先使用此付款方式 收钱 转账 小荷包"
+        assertFalse(PaymentParser.hasAnchor(page))
+    }
+
+    @Test
+    fun `payment authorization page is not a result page`() {
+        val page = "高德顺风车订单 ¥53.68 我已阅读并同意《付款授权服务协议》付款并开通 确认付款 " +
+            "点击支付按钮及完成支付 支付成功得绿色能量5g 支付金额53.68元"
+        assertFalse(PaymentParser.hasAnchor(page))
+    }
+
+    @Test
     fun `alipay transfer success is an expense for the payer`() {
         val parsed = PaymentParser.parse("", "转账成功￥5.00 收款方： 张三 查看凭证", PaymentParser.ALIPAY)
         assertEquals(500L, parsed.amountCents)

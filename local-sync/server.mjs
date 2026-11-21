@@ -2,17 +2,25 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createPlannerStore } from './plannerStore.mjs';
+import { createCalendarStore } from './calendarStore.mjs';
+import { AgentError, createAgentApi } from './agentApi.mjs';
+import { AssistantError, createAssistant } from './assistant.mjs';
 
 const PORT = Number(process.env.PORT || 18787);
 const HOST = process.env.HOST || '127.0.0.1';
-const DATA_DIR = path.join(process.cwd(), 'local-sync', 'data');
+const DATA_DIR = process.env.SHUNSHOU_DATA_DIR || path.join(process.cwd(), 'local-sync', 'data');
 const SAMPLES_FILE = path.join(DATA_DIR, 'samples.json');
 const LEDGER_FILE = path.join(DATA_DIR, 'ledger.json');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
+const AUDIT_FILE = path.join(DATA_DIR, 'agent-audit.json');
 const HDU_TARGET = new URL(process.env.HDU_HELPER_URL ?? 'http://127.0.0.1:8000');
 const MAX_BODY = 2_000_000;
 const MAX_SAMPLES = 500;
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AGENT_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000;
+const MAX_AGENT_TOKENS = 20;
+const MAX_AUDIT = 200;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_LIMIT = 8;
 
@@ -51,10 +59,30 @@ function randomPassword() {
   return Array.from(crypto.randomBytes(10), (byte) => alphabet[byte % alphabet.length]).join('');
 }
 
+function normalizeAgentToken(item) {
+  if (!item || typeof item !== 'object') return null;
+  if (typeof item.id !== 'string' || typeof item.hash !== 'string' || (item.scope !== 'read' && item.scope !== 'write')) return null;
+  if (!Number.isSafeInteger(item.expiresAt)) return null;
+  return {
+    id: item.id,
+    name: typeof item.name === 'string' ? item.name.slice(0, 40) : 'agent',
+    scope: item.scope,
+    hash: item.hash,
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date(item.expiresAt - AGENT_TOKEN_TTL_MS).toISOString(),
+    lastUsedAt: typeof item.lastUsedAt === 'string' ? item.lastUsedAt : null,
+    expiresAt: item.expiresAt,
+  };
+}
+
 function loadAuthFile() {
   const value = readJson(AUTH_FILE, null);
   if (!value || typeof value !== 'object' || typeof value.passwordHash !== 'string' || typeof value.salt !== 'string') return null;
-  return { salt: value.salt, passwordHash: value.passwordHash, tokens: Array.isArray(value.tokens) ? value.tokens : [] };
+  return {
+    salt: value.salt,
+    passwordHash: value.passwordHash,
+    tokens: Array.isArray(value.tokens) ? value.tokens : [],
+    agentTokens: Array.isArray(value.agentTokens) ? value.agentTokens.map(normalizeAgentToken).filter(Boolean) : [],
+  };
 }
 
 function ensurePassword() {
@@ -62,14 +90,14 @@ function ensurePassword() {
   const fromEnv = String(process.env.SHUNSHOU_PASSWORD ?? '');
   if (fromEnv.length >= 8) {
     const salt = crypto.randomBytes(16).toString('hex');
-    const next = { salt, passwordHash: scrypt(fromEnv, salt), tokens: auth?.tokens ?? [] };
+    const next = { salt, passwordHash: scrypt(fromEnv, salt), tokens: auth?.tokens ?? [], agentTokens: auth?.agentTokens ?? [] };
     writeJson(AUTH_FILE, next);
     return next;
   }
   if (auth) return auth;
   const password = randomPassword();
   const salt = crypto.randomBytes(16).toString('hex');
-  const next = { salt, passwordHash: scrypt(password, salt), tokens: [] };
+  const next = { salt, passwordHash: scrypt(password, salt), tokens: [], agentTokens: [] };
   writeJson(AUTH_FILE, next);
   console.log(`首次启动访问口令: ${password}`);
   console.log('口令只在这里显示一次，已按哈希保存在 local-sync/data/auth.json；忘记可删除该文件重新生成。');
@@ -97,6 +125,32 @@ function revokeToken(auth, token) {
   writeJson(AUTH_FILE, auth);
 }
 
+function publicAgent(item) {
+  return { id: item.id, name: item.name, scope: item.scope, createdAt: item.createdAt, lastUsedAt: item.lastUsedAt, expiresAt: item.expiresAt };
+}
+
+function issueAgentToken(auth, name, scope) {
+  const now = Date.now();
+  const existing = (auth.agentTokens ?? []).filter((item) => item.expiresAt > now);
+  if (existing.length >= MAX_AGENT_TOKENS) throw new Error('too_many_tokens');
+  const token = crypto.randomBytes(32).toString('base64url');
+  const record = {
+    id: crypto.randomUUID(), name, scope, hash: sha256(token),
+    createdAt: new Date(now).toISOString(), lastUsedAt: null, expiresAt: now + AGENT_TOKEN_TTL_MS,
+  };
+  auth.agentTokens = [...existing, record];
+  writeJson(AUTH_FILE, auth);
+  return { token, agent: publicAgent(record) };
+}
+
+function revokeAgentToken(auth, id) {
+  const before = auth.agentTokens?.length ?? 0;
+  auth.agentTokens = (auth.agentTokens ?? []).filter((item) => item.id !== id);
+  if (auth.agentTokens.length === before) return false;
+  writeJson(AUTH_FILE, auth);
+  return true;
+}
+
 const authState = ensurePassword();
 
 function authorized(request) {
@@ -106,8 +160,25 @@ function authorized(request) {
   if (!token) return null;
   const hash = sha256(token);
   const now = Date.now();
-  const found = authState.tokens.find((item) => item.hash === hash && item.expiresAt > now);
-  return found ? { token } : null;
+  const session = authState.tokens.find((item) => item && item.hash === hash && item.expiresAt > now);
+  if (session) return { kind: 'session', token };
+  const agent = (authState.agentTokens ?? []).find((item) => item.hash === hash && item.expiresAt > now);
+  if (!agent) return null;
+  const previous = agent.lastUsedAt ? Date.parse(agent.lastUsedAt) : 0;
+  agent.lastUsedAt = new Date(now).toISOString();
+  if (!Number.isFinite(previous) || now - previous > 5 * 60_000) {
+    try { writeJson(AUTH_FILE, authState); } catch { /* 最近使用时间写入失败不影响本次认证。 */ }
+  }
+  return { kind: 'agent', id: agent.id, name: agent.name, scope: agent.scope, token };
+}
+
+function loadAudit() {
+  const value = readJson(AUDIT_FILE, []);
+  return Array.isArray(value) ? value : [];
+}
+
+function recordAudit(entry) {
+  try { writeJson(AUDIT_FILE, [...loadAudit(), entry].slice(-MAX_AUDIT)); } catch { /* 记录失败不影响接口结果。 */ }
 }
 
 const loginAttempts = new Map();
@@ -131,8 +202,8 @@ function cors(request, response) {
     response.setHeader('Access-Control-Allow-Credentials', 'true');
   }
   response.setHeader('Vary', 'Origin');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token, Idempotency-Key');
 }
 
 function json(response, status, body) {
@@ -223,6 +294,43 @@ function proxyCampus(request, response, url) {
   request.pipe(proxyRequest);
 }
 
+let plannerStore;
+const getPlannerStore = () => plannerStore ??= createPlannerStore(DATA_DIR);
+let calendarStore;
+const getCalendarStore = () => calendarStore ??= createCalendarStore(DATA_DIR);
+let agentApi;
+const getAgentApi = () => agentApi ??= createAgentApi({
+  readPlanner: () => getPlannerStore().read(),
+  execute: (input) => getPlannerStore().execute(input),
+  readCalendars: () => getCalendarStore().read(),
+  readLedger: () => {
+    if (!fs.existsSync(LEDGER_FILE)) return null;
+    const doc = loadLedgerDoc();
+    if (!doc) throw Object.assign(new Error('ledger_storage_corrupt'), { code: 'ledger_storage_corrupt' });
+    return doc.ledger;
+  },
+  writeLedger: (ledger) => {
+    if (!validLedger(ledger)) throw new Error('invalid_ledger');
+    writeJson(LEDGER_FILE, { ledger, updatedAt: new Date().toISOString() });
+  },
+});
+let assistant;
+const getAssistant = () => assistant ??= createAssistant({
+  directory: DATA_DIR,
+  getTools: () => getAgentApi().manifest({ kind: 'assistant', name: '内置助手', scope: 'write' }).tools,
+  callTool: ({ tool, args, requestId }) => {
+    const summary = JSON.stringify(args ?? {}).slice(0, 500);
+    try {
+      const result = getAgentApi().call({ tool, arguments: args, requestId, scope: 'write', actor: 'assistant', caller: { kind: 'assistant', name: '内置助手', scope: 'write' } });
+      recordAudit({ at: new Date().toISOString(), actor: '内置助手', actorKind: 'session', tool, summary, ok: true, error: null, revision: result.revision ?? null });
+      return { ok: true, ...result };
+    } catch (error) {
+      recordAudit({ at: new Date().toISOString(), actor: '内置助手', actorKind: 'session', tool, summary, ok: false, error: error?.code ?? 'agent_error', revision: null });
+      return { ok: false, error: error?.code ?? 'agent_error', message: error instanceof Error ? error.message : '操作未完成。' };
+    }
+  },
+});
+
 const server = http.createServer(async (request, response) => {
   cors(request, response);
   if (request.method === 'OPTIONS') {
@@ -265,6 +373,227 @@ const server = http.createServer(async (request, response) => {
   const session = authorized(request);
   if (!session) {
     json(response, 401, { ok: false, error: 'unauthorized' });
+    return;
+  }
+
+  const allowedOrigin = !request.headers.origin || ALLOWED_ORIGINS.has(request.headers.origin);
+
+  if (url.pathname === '/api/agent/tokens' || url.pathname.startsWith('/api/agent/tokens/')) {
+    if (session.kind !== 'session') {
+      json(response, 403, { ok: false, error: 'session_required' });
+      return;
+    }
+    if (!allowedOrigin) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/agent/tokens') {
+      json(response, 200, { ok: true, agents: (authState.agentTokens ?? []).filter((item) => item.expiresAt > Date.now()).map(publicAgent) });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/api/agent/tokens') {
+      try {
+        const body = JSON.parse(await readBody(request));
+        const name = typeof body?.name === 'string' ? body.name.trim() : '';
+        if (name.length < 1 || name.length > 40) {
+          json(response, 400, { ok: false, error: 'invalid_name' });
+          return;
+        }
+        if (body?.scope !== 'read' && body?.scope !== 'write') {
+          json(response, 400, { ok: false, error: 'invalid_scope' });
+          return;
+        }
+        json(response, 200, { ok: true, ...issueAgentToken(authState, name, body.scope) });
+      } catch (error) {
+        const tooLarge = error instanceof Error && error.message === 'body_too_large';
+        const tooMany = error instanceof Error && error.message === 'too_many_tokens';
+        json(response, tooLarge ? 413 : 400, { ok: false, error: tooLarge ? 'body_too_large' : tooMany ? 'too_many_tokens' : 'invalid_json' });
+      }
+      return;
+    }
+    if (request.method === 'DELETE' && url.pathname.startsWith('/api/agent/tokens/')) {
+      let id = url.pathname.slice('/api/agent/tokens/'.length);
+      try { id = decodeURIComponent(id); } catch { /* 非法编码按无效令牌处理。 */ }
+      if (!id || id.includes('/') || !revokeAgentToken(authState, id)) {
+        json(response, 404, { ok: false, error: 'token_not_found' });
+        return;
+      }
+      json(response, 200, { ok: true });
+      return;
+    }
+    json(response, 405, { ok: false, error: 'method_not_allowed' });
+    return;
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/agent/audit') {
+    if (session.kind !== 'session') {
+      json(response, 403, { ok: false, error: 'session_required' });
+      return;
+    }
+    if (!allowedOrigin) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    json(response, 200, { ok: true, entries: loadAudit().slice(-50).reverse() });
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/assistant/')) {
+    if (session.kind !== 'session') {
+      json(response, 403, { ok: false, error: 'session_required' });
+      return;
+    }
+    if (!allowedOrigin) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    try {
+      if (request.method === 'GET' && url.pathname === '/api/assistant/settings') {
+        json(response, 200, { ok: true, ...getAssistant().publicSettings() });
+        return;
+      }
+      if (request.method === 'PUT' && url.pathname === '/api/assistant/settings') {
+        const body = JSON.parse(await readBody(request));
+        json(response, 200, { ok: true, ...getAssistant().updateSettings(body) });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/assistant/test') {
+        json(response, 200, { ok: true, result: await getAssistant().test() });
+        return;
+      }
+      if (request.method === 'POST' && url.pathname === '/api/assistant/chat') {
+        const body = JSON.parse(await readBody(request));
+        json(response, 200, { ok: true, ...(await getAssistant().chat(body?.messages)) });
+        return;
+      }
+      json(response, 405, { ok: false, error: 'method_not_allowed' });
+      return;
+    } catch (error) {
+      if (error instanceof AssistantError) {
+        json(response, error.status, { ok: false, error: error.code, message: error.message });
+      } else if (error?.message === 'body_too_large') {
+        json(response, 413, { ok: false, error: 'body_too_large', message: '内容太长，请分段发送。' });
+      } else if (error instanceof SyntaxError) {
+        json(response, 400, { ok: false, error: 'invalid_json', message: '请求格式不正确。' });
+      } else if (typeof error?.code === 'string') {
+        json(response, 503, { ok: false, error: 'storage_unavailable', message: '电脑上的数据暂时不可用。' });
+      } else {
+        json(response, 500, { ok: false, error: 'assistant_error', message: '助手执行失败。' });
+      }
+      return;
+    }
+  }
+
+  if (session.kind === 'agent' && !url.pathname.startsWith('/api/v1/agent/')) {
+    json(response, 403, { ok: false, error: 'agent_token_restricted' });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/agent/manifest') {
+    if (request.method !== 'GET') {
+      json(response, 405, { ok: false, error: 'method_not_allowed' });
+      return;
+    }
+    if (!allowedOrigin) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    const caller = session.kind === 'agent'
+      ? { kind: 'agent', name: session.name, scope: session.scope }
+      : { kind: 'session', name: '网页登录', scope: 'write' };
+    json(response, 200, { ok: true, ...getAgentApi().manifest(caller) });
+    return;
+  }
+
+  if (url.pathname === '/api/v1/agent/call') {
+    if (request.method !== 'POST') {
+      json(response, 405, { ok: false, error: 'method_not_allowed' });
+      return;
+    }
+    if (!allowedOrigin) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    let body;
+    try { body = JSON.parse(await readBody(request)); }
+    catch (error) {
+      const tooLarge = error instanceof Error && error.message === 'body_too_large';
+      json(response, tooLarge ? 413 : 400, { ok: false, error: tooLarge ? 'body_too_large' : 'invalid_json' });
+      return;
+    }
+    const tool = typeof body?.tool === 'string' ? body.tool : '';
+    const caller = session.kind === 'agent'
+      ? { kind: 'agent', name: session.name, scope: session.scope }
+      : { kind: 'session', name: '网页登录', scope: 'write' };
+    const actor = session.kind === 'agent' ? session.id : 'web-session';
+    const audit = { at: new Date().toISOString(), actor: caller.name, actorKind: session.kind, tool, summary: JSON.stringify(body?.arguments ?? {}).slice(0, 500) };
+    if (!tool) {
+      recordAudit({ ...audit, ok: false, error: 'invalid_request', revision: null });
+      json(response, 400, { ok: false, error: 'invalid_request', message: '缺少 tool。' });
+      return;
+    }
+    try {
+      const requestId = String(request.headers['idempotency-key'] ?? body?.requestId ?? '');
+      const result = getAgentApi().call({
+        tool, arguments: body?.arguments ?? {}, requestId, actor,
+        scope: session.kind === 'agent' ? session.scope : 'write', caller,
+      });
+      recordAudit({ ...audit, ok: true, error: null, revision: result.revision });
+      json(response, 200, { ok: true, result: result.result, revision: result.revision, serverId: result.serverId });
+    } catch (error) {
+      const failure = error instanceof AgentError
+        ? { status: error.status, body: { ok: false, error: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) } }
+        : error?.name === 'ZodError'
+          ? { status: 400, body: { ok: false, error: 'invalid_arguments', message: '参数格式不正确。' } }
+          : error?.message === 'operation_reused'
+            ? { status: 409, body: { ok: false, error: 'request_id_reused', message: '这个 Idempotency-Key 已经用于另一个不同操作。' } }
+            : error?.message === 'conflict'
+              ? { status: 409, body: { ok: false, error: 'conflict', message: '数据正在被另一处修改，请重试。' } }
+              : (typeof error?.code === 'string' || error?.message === 'planner_storage_corrupt' || error?.message === 'calendar_storage_corrupt')
+                ? { status: 503, body: { ok: false, error: 'storage_unavailable', message: '电脑上的数据暂时不可用。' } }
+                : { status: 500, body: { ok: false, error: 'agent_error', message: '助手接口执行失败。' } };
+      recordAudit({ ...audit, ok: false, error: failure.body.error, revision: null });
+      json(response, failure.status, failure.body);
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/planner' || url.pathname === '/api/planner/operations') {
+    if (request.headers.origin && !ALLOWED_ORIGINS.has(request.headers.origin)) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    try {
+      if (request.method === 'GET' && url.pathname === '/api/planner') {
+        json(response, 200, getPlannerStore().read());
+      } else if (request.method === 'POST' && url.pathname === '/api/planner/operations') {
+        const input = JSON.parse(await readBody(request));
+        json(response, 200, getPlannerStore().execute(input));
+      } else json(response, 405, { ok: false, error: 'method_not_allowed' });
+    } catch (error) {
+      const conflict = error.message === 'conflict' || error.message === 'operation_reused';
+      const badInput = error.name === 'ZodError' || error instanceof SyntaxError;
+      const storage = error.message === 'planner_storage_corrupt' || typeof error.code === 'string';
+      json(response, conflict ? 409 : error.message === 'body_too_large' ? 413 : storage ? 503 : 400,
+        { ok: false, error: conflict ? 'conflict' : storage ? 'storage_unavailable' : badInput ? 'invalid_input' : 'operation_rejected' });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/calendar' || url.pathname === '/api/calendar/snapshot') {
+    if (request.headers.origin && !ALLOWED_ORIGINS.has(request.headers.origin)) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    try {
+      if (request.method === 'GET' && url.pathname === '/api/calendar') json(response, 200, { sources: getCalendarStore().read(), serverId: getPlannerStore().read().serverId });
+      else if (request.method === 'PUT' && url.pathname === '/api/calendar/snapshot') json(response, 200, getCalendarStore().upload(JSON.parse(await readBody(request))));
+      else json(response, 405, { ok: false, error: 'method_not_allowed' });
+    } catch (error) {
+      const conflict = error.message === 'conflict' || error.message === 'operation_reused';
+      const unavailable = error.message === 'calendar_storage_corrupt' || typeof error.code === 'string';
+      json(response, conflict ? 409 : unavailable ? 503 : 400, { ok: false, error: conflict ? 'conflict' : unavailable ? 'storage_unavailable' : 'invalid_input' });
+    }
     return;
   }
 
@@ -345,7 +674,7 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`顺手网关: http://${HOST === '0.0.0.0' ? '127.0.0.1' : HOST}:${PORT}`);
+  console.log(`顺手网关: http://${HOST === '0.0.0.0' ? '127.0.0.1' : HOST}:${server.address().port}`);
   console.log('网页填这个地址 + 访问口令；远程访问用 HTTPS 隧道地址。');
   console.log(`如需手机走局域网直连，用 HOST=0.0.0.0 npm run sync（不建议长期开放）。`);
 });

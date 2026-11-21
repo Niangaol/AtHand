@@ -73,12 +73,15 @@ test('mobile can start empty, create a unit and save real records offline', asyn
   await page.goto('/settings');
   await page.getByRole('button', { name: '清空示例数据' }).click();
   await page.getByRole('button', { name: '确认清空示例' }).click();
+  await expect(page.getByText('示例数据已清空。', { exact: true })).toBeVisible();
   await page.goto('/workplaces');
   await page.getByRole('button', { name: '新增单位' }).click();
   await page.getByLabel('单位名称').fill('图书馆的一个很长很长但仍然合法的兼职单位名称');
   await page.getByLabel('单位时薪（元）').fill('25');
   await page.getByRole('button', { name: '保存单位' }).click();
+  await expect(page.getByRole('heading', { name: '图书馆的一个很长很长但仍然合法的兼职单位名称' })).toBeVisible();
   await page.goto('/entry');
+  await expect(page.getByLabel('每小时时薪（元）')).toHaveValue('25.00');
   await context.setOffline(true);
   await page.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect(page.getByText('¥ 75.00')).toHaveCount(2);
@@ -123,6 +126,7 @@ test('an older tab cannot silently overwrite another tab and retains its draft',
   }
   await first.getByLabel('备注（选填）').fill('第一个窗口');
   await first.getByRole('button', { name: '保存记录', exact: true }).click();
+  await expect(first.getByRole('region', { name: '账单明细' })).toContainText('第一个窗口');
   await second.getByLabel('备注（选填）').fill('第二个窗口未保存');
   await second.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect(second.getByTestId('entry-error')).toContainText('其他窗口');
@@ -170,11 +174,14 @@ test('time cost appears after three actual dates and tracks the chosen base rate
     await page.getByLabel('消费日期').fill(date);
     await page.getByLabel('支出金额（元）').fill('30');
     await page.getByRole('button', { name: '保存记录', exact: true }).click();
+    await expect(page).toHaveURL(/\/ledger(?:\?|$)/);
+    await expect(page.getByRole('status')).toContainText('记录已保存到本机');
   }
   await expect(page.getByText('约 1.5 小时 · 基准时薪估算')).toHaveCount(3);
   await page.goto('/settings');
   await page.getByLabel('换算时薪（元/小时）').fill('30');
   await page.getByRole('button', { name: '保存时薪' }).click();
+  await expect(page.getByRole('status')).toContainText('换算时薪已保存');
   await page.goto('/ledger');
   await expect(page.getByText('约 1.0 小时 · 基准时薪估算')).toHaveCount(3);
   await expect(page.getByText('¥ 90.00')).toBeVisible();

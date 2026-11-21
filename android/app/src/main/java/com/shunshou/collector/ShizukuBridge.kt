@@ -52,6 +52,16 @@ object ShizukuBridge {
         return "无障碍已开启"
     }
 
+    fun disableAccessibility(packageName: String): String {
+        val component = "$packageName/${PaymentAccessibilityService::class.java.name}"
+        val current = shell("settings get secure enabled_accessibility_services").trim()
+            .let { if (it == "null" || it.isEmpty()) "" else it }
+        val next = current.split(":").filter { it.isNotBlank() && it != component }.joinToString(":")
+        shell("settings put secure enabled_accessibility_services '$next'")
+        if (next.isEmpty()) shell("settings put secure accessibility_enabled 0")
+        return "无障碍已关闭"
+    }
+
     fun grantCalendar(packageName: String): String {
         shell("pm grant $packageName android.permission.READ_CALENDAR")
         return "日历已授权"

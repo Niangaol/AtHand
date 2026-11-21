@@ -15,7 +15,8 @@ const hduProxy = {
 
 export default defineConfig({
   plugins: [react()],
-  server: { host: '127.0.0.1', proxy: { '/web': hduProxy, '/api': 'http://127.0.0.1:18787' } },
+  optimizeDeps: { include: ['ical.js', 'd3-geo', 'topojson-client'] },
+  server: { host: '127.0.0.1', watch: { ignored: ['**/.tmp-edge*/**', '**/*.tmpdir/**', '**/tools/**', '**/test-results/**', '**/local-sync/data/**'] }, proxy: { '/web': hduProxy, '/api': 'http://127.0.0.1:18787' } },
   preview: { proxy: { '/web': hduProxy, '/api': 'http://127.0.0.1:18787' } },
   test: {
     environment: 'jsdom',

@@ -1,6 +1,22 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto';
+
+beforeEach(async () => {
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('shunshou-write-guards', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('documents');
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction('documents', 'readwrite');
+      transaction.objectStore('documents').clear();
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onabort = () => reject(transaction.error);
+    };
+    request.onerror = () => reject(request.error);
+  });
+});
 
 afterEach(cleanup);
 

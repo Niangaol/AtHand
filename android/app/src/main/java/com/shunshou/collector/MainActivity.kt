@@ -2,21 +2,25 @@ package com.shunshou.collector
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
-import android.text.InputType
 import android.view.View
-import android.view.ViewGroup
+import android.view.WindowInsetsController
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import java.text.SimpleDateFormat
@@ -25,37 +29,62 @@ import java.util.Locale
 import rikka.shizuku.Shizuku
 
 class MainActivity : Activity() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
+    private val probePrefs get() = getSharedPreferences("shunshou_probe", MODE_PRIVATE)
+    private val calendarPrefs get() = getSharedPreferences("shunshou_calendar", MODE_PRIVATE)
+
+    private lateinit var switchCapture: Switch
+    private lateinit var textCaptureStatus: TextView
+    private lateinit var textSyncStatus: TextView
+    private lateinit var textCalendarStatus: TextView
+    private lateinit var textBackgroundStatus: TextView
+    private lateinit var buttonBatteryOptimization: Button
+    private lateinit var textSampleCount: TextView
+    private lateinit var containerSamples: LinearLayout
+    private lateinit var panelConnection: LinearLayout
+    private lateinit var panelDebug: LinearLayout
+    private lateinit var buttonConnection: Button
+    private lateinit var buttonToggleDebug: Button
+    private lateinit var syncUrlInput: EditText
+    private lateinit var syncPasswordInput: EditText
+    private lateinit var textDebugStatus: TextView
+
+    private var updatingSwitch = false
+
     private val shizukuRequestCode = 1001
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
-        if (requestCode == shizukuRequestCode) runOnUiThread { renderShizuku() }
+        if (requestCode == shizukuRequestCode) runOnUiThread { renderDebugStatus() }
     }
-    private val shizukuBinderReceived = Shizuku.OnBinderReceivedListener { runOnUiThread { renderShizuku() } }
-    private val shizukuBinderDead = Shizuku.OnBinderDeadListener { runOnUiThread { renderShizuku() } }
-
-    private lateinit var statusView: TextView
-    private lateinit var samplesView: LinearLayout
-    private lateinit var calendarView: LinearLayout
-    private lateinit var shizukuView: TextView
-    private lateinit var syncUrlInput: EditText
-    private lateinit var syncTokenInput: EditText
-    private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
-    private val green = Color.parseColor("#295C48")
-    private val ink = Color.parseColor("#24382D")
-    private val muted = Color.parseColor("#65746A")
+    private val shizukuBinderReceived = Shizuku.OnBinderReceivedListener { runOnUiThread { renderDebugStatus() } }
+    private val shizukuBinderDead = Shizuku.OnBinderDeadListener { runOnUiThread { renderDebugStatus() } }
+    private val calendarListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "status") runOnUiThread { if (!isDestroyed) renderCalendar() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureWindow()
         SampleStore.load(this)
-        setContentView(buildUi())
-        SampleStore.listener = { runOnUiThread { renderSamples(); renderStatus() } }
+        setContentView(R.layout.activity_main)
+        bindViews()
+        syncUrlInput.setText(probePrefs.getString("syncUrl", "http://127.0.0.1:18787"))
+        syncPasswordInput.setText(probePrefs.getString("syncPassword", ""))
+        setupListeners()
+        SampleStore.listener = { runOnUiThread { renderSamples(); renderCapture() } }
         Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
         Shizuku.addBinderReceivedListener(shizukuBinderReceived)
         Shizuku.addBinderDeadListener(shizukuBinderDead)
+        CalendarWorker.schedule(this)
+        calendarPrefs.registerOnSharedPreferenceChangeListener(calendarListener)
+        renderAll()
     }
 
     override fun onResume() {
         super.onResume()
+        SampleStore.listener = { runOnUiThread { renderSamples(); renderCapture() } }
         renderAll()
+        CalendarWorker.refresh(this)
     }
 
     override fun onPause() {
@@ -64,6 +93,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        calendarPrefs.unregisterOnSharedPreferenceChangeListener(calendarListener)
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
         Shizuku.removeBinderReceivedListener(shizukuBinderReceived)
         Shizuku.removeBinderDeadListener(shizukuBinderDead)
@@ -75,159 +105,359 @@ class MainActivity : Activity() {
         renderAll()
     }
 
-    private fun buildUi(): View = ScrollView(this).apply {
-        fitsSystemWindows = true
-        setBackgroundColor(Color.parseColor("#F5F7F4"))
-        addView(LinearLayout(this@MainActivity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(32))
-            addView(label("顺手采集探针", 24f, green, true))
-            addView(label("只在本机读取支付宝/微信支付通知和日历；样本不上传。", 12f, muted))
+    private fun configureWindow() {
+        val background = getColor(R.color.bg)
+        window.statusBarColor = background
+        window.navigationBarColor = background
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            window.insetsController?.setSystemBarsAppearance(light, light)
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
+    }
 
-            addView(section("权限状态"))
-            statusView = label("", 13f, ink).apply { setPadding(0, dp(8), 0, dp(4)) }
-            addView(statusView)
-            addView(row(
-                action("通知使用权") { openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS) },
-                action("无障碍") { openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS) },
-                action("授权日历") { requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR), 1) },
-            ))
+    private fun bindViews() {
+        switchCapture = findViewById(R.id.switchCapture)
+        textCaptureStatus = findViewById(R.id.textCaptureStatus)
+        textSyncStatus = findViewById(R.id.textSyncStatus)
+        textCalendarStatus = findViewById(R.id.textCalendarStatus)
+        textBackgroundStatus = findViewById(R.id.textBackgroundStatus)
+        buttonBatteryOptimization = findViewById(R.id.buttonBatteryOptimization)
+        textSampleCount = findViewById(R.id.textSampleCount)
+        containerSamples = findViewById(R.id.containerSamples)
+        panelConnection = findViewById(R.id.panelConnection)
+        panelDebug = findViewById(R.id.panelDebug)
+        buttonConnection = findViewById(R.id.buttonConnection)
+        buttonToggleDebug = findViewById(R.id.buttonToggleDebug)
+        syncUrlInput = findViewById(R.id.inputSyncUrl)
+        syncPasswordInput = findViewById(R.id.inputSyncPassword)
+        textDebugStatus = findViewById(R.id.textDebugStatus)
+    }
 
-            addView(section("Shizuku 读屏"))
-            shizukuView = label("", 13f, ink)
-            addView(shizukuView)
-            addView(row(
-                action("请求 Shizuku 权限") { requestShizuku() },
-                action("5 秒后读屏") { readScreenDelayed() },
-            ))
-            addView(row(
-                action("Shizuku 读屏") { readScreenViaShizuku() },
-                action("开启无障碍（兜底）") { enableAccessibilityViaShizuku() },
-            ))
-            addView(row(
-                action("5 秒后截图识别（OCR）") { readScreenByScreenshotDelayed() },
-                action("截图识别（当前屏）") { readScreenByScreenshot() },
-            ))
-            addView(label("Shizuku 用 uiautomator 或截图 OCR 读取当前屏幕；OCR 在本机运行，不保存图片、不上传。微信红包没有转账成功页，请打开红包详情或账单页再读屏。", 11f, muted))
+    private fun setupListeners() {
+        switchCapture.setOnCheckedChangeListener { _, checked ->
+            if (!updatingSwitch) onCaptureToggled(checked)
+        }
+        buttonConnection.setOnClickListener {
+            togglePanel(panelConnection, buttonConnection, "连接设置", "收起设置")
+        }
+        buttonToggleDebug.setOnClickListener {
+            togglePanel(panelDebug, buttonToggleDebug, "调试工具  ›", "收起调试工具")
+        }
+        findViewById<Button>(R.id.buttonSyncSamples).setOnClickListener { syncSamples() }
+        findViewById<Button>(R.id.buttonTestConnection).setOnClickListener { testConnection() }
+        findViewById<Button>(R.id.buttonSaveConnection).setOnClickListener { testConnection() }
+        findViewById<Button>(R.id.buttonRefreshSamples).setOnClickListener { renderAll() }
+        findViewById<Button>(R.id.buttonCopySamples).setOnClickListener { copySamples() }
+        findViewById<Button>(R.id.buttonClearSamples).setOnClickListener { confirmClearSamples() }
+        findViewById<Button>(R.id.buttonSyncCalendar).setOnClickListener {
+            savedSyncUrl()
+            savedSyncPassword()
+            CalendarWorker.refresh(this, true)
+            toast("已安排同步，联网后上传")
+        }
+        buttonBatteryOptimization.setOnClickListener { requestBatteryExemption() }
+        findViewById<Button>(R.id.buttonAppSettings).setOnClickListener { openAppDetails() }
+        findViewById<Button>(R.id.buttonShizukuRead).setOnClickListener { readScreenViaShizuku() }
+        findViewById<Button>(R.id.buttonShizukuRead5).setOnClickListener { readScreenDelayed() }
+        findViewById<Button>(R.id.buttonOcr).setOnClickListener { readScreenByScreenshot() }
+        findViewById<Button>(R.id.buttonOcr5).setOnClickListener { readScreenByScreenshotDelayed() }
+        findViewById<Button>(R.id.buttonRequestShizuku).setOnClickListener { requestShizuku() }
+        findViewById<Button>(R.id.buttonGrantCalendar).setOnClickListener { grantCalendarViaShizuku() }
+        findViewById<Button>(R.id.buttonNotificationSettings).setOnClickListener {
+            openSettings(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+        }
+        findViewById<Button>(R.id.buttonAccessibilitySettings).setOnClickListener {
+            openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        }
+    }
 
-            addView(section("本机同步"))
-            syncUrlInput = EditText(this@MainActivity).apply {
-                setText(getSharedPreferences("shunshou_probe", MODE_PRIVATE).getString("syncUrl", "http://127.0.0.1:18787"))
-                hint = "http://电脑地址:18787"
-                inputType = InputType.TYPE_TEXT_VARIATION_URI
-                setSingleLine(true)
-            }
-            addView(syncUrlInput)
-            syncTokenInput = EditText(this@MainActivity).apply {
-                setText(getSharedPreferences("shunshou_probe", MODE_PRIVATE).getString("syncPassword", ""))
-                hint = "访问口令（电脑首次启动时打印）"
-                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-                setSingleLine(true)
-            }
-            addView(syncTokenInput)
-            addView(row(
-                action("测试连接") { testSync() },
-                action("同步样本") { syncSamples() },
-            ))
-            addView(label("电脑运行 npm run sync，填电脑地址和口令；远程用 HTTPS 隧道地址。USB 调试可先 adb reverse tcp:18787 tcp:18787。", 11f, muted))
-
-            addView(section("最近捕获"))
-            addView(label("先开启通知使用权，再做一笔小额支付。每位助手会记录原文和解析结果，便于判断金额是否可见。", 11f, muted))
-            samplesView = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
-            addView(samplesView)
-            addView(row(
-                action("刷新") { renderAll() },
-                action("复制样本") { copySamples() },
-                action("清空") { SampleStore.clear(this@MainActivity); renderAll() },
-            ))
-
-            addView(section("未来 7 天日程"))
-            calendarView = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
-            addView(calendarView)
-            addView(label(
-                "无障碍是兜底通道：仅在通知里看不到金额时启用。它只读支付宝/微信的支付结果文字，跳过密码框和输入框，不截屏、不记录按键。",
-                11f, muted,
-            ).apply { setPadding(0, dp(18), 0, 0) })
-        })
+    private fun togglePanel(panel: LinearLayout, button: Button, collapsed: String, expanded: String) {
+        val show = panel.visibility != View.VISIBLE
+        panel.visibility = if (show) View.VISIBLE else View.GONE
+        button.text = if (show) expanded else collapsed
     }
 
     private fun renderAll() {
-        renderStatus()
-        renderShizuku()
+        renderCapture()
+        renderSync()
         renderSamples()
         renderCalendar()
+        renderBackground()
+        renderDebugStatus()
     }
 
-    private fun renderStatus() {
-        val notifications = notificationAccessEnabled()
-        val accessibility = accessibilityEnabled()
-        val calendar = checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
-        statusView.text = buildString {
-            append(if (accessibility) "✓ 无障碍已开启（主通道）" else "○ 无障碍未开启（主通道）")
-            append("\n")
-            append(if (notifications) "✓ 通知使用权已开启（可选）" else "○ 通知使用权未开启（可选）")
-            append("\n")
-            append(if (calendar) "✓ 日历已授权" else "○ 日历未授权")
+    private fun renderCapture() {
+        val enabled = accessibilityEnabled()
+        updatingSwitch = true
+        switchCapture.isChecked = enabled
+        updatingSwitch = false
+        if (enabled) {
+            textCaptureStatus.text = "● 已开启 · 只读支付结果页"
+            textCaptureStatus.setTextColor(getColor(R.color.hero_ok))
+        } else {
+            textCaptureStatus.text = "○ 已关闭 · 打开后自动记一笔"
+            textCaptureStatus.setTextColor(getColor(R.color.hero_muted))
         }
+    }
+
+    private fun renderSync() {
+        val lastAt = probePrefs.getLong("lastSampleSync", 0L)
+        val message = probePrefs.getString("lastSampleMessage", "").orEmpty()
+        val host = SyncClient.urlOrDefault(probePrefs.getString("syncUrl", null))
+            .removePrefix("https://").removePrefix("http://").trimEnd('/')
+        textSyncStatus.text = if (lastAt > 0) {
+            "上次同步 ${timeFormat.format(Date(lastAt))}\n$message"
+        } else {
+            "尚未同步 · 电脑 $host"
+        }
+        textSyncStatus.setTextColor(
+            if (message.contains("失败")) getColor(R.color.warm) else getColor(R.color.ink)
+        )
     }
 
     private fun renderSamples() {
-        samplesView.removeAllViews()
+        containerSamples.removeAllViews()
         val items = SampleStore.all()
+        textSampleCount.text = "${items.size} 条"
         if (items.isEmpty()) {
-            samplesView.addView(hint("还没有捕获到支付通知。"))
+            containerSamples.addView(hint("还没有捕获到支付。开启自动记账后做一笔小额支付试试。"))
             return
         }
-        for (sample in items.take(10)) {
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                setBackgroundColor(Color.WHITE)
-            }
+        for (sample in items.take(3)) {
+            val row = layoutInflater.inflate(R.layout.item_sample, containerSamples, false)
+            row.findViewById<TextView>(R.id.textMerchant).text =
+                sample.merchant.ifBlank { PaymentParser.appName(sample.packageName) }
             val source = when (sample.source) {
                 Source.NOTIFICATION -> "通知"
                 Source.ACCESSIBILITY -> "屏幕"
                 Source.SHIZUKU -> "Shizuku"
             }
-            card.addView(label("$source · ${PaymentParser.appName(sample.packageName)} · ${timeFormat.format(Date(sample.at))}", 11f, muted))
-            card.addView(label(
-                "${PaymentParser.amountLabel(sample.amountCents)} · ${PaymentParser.directionLabel(sample.direction)}",
-                17f, if (sample.amountCents == null) Color.parseColor("#A05A2C") else ink, true,
-            ).apply { setPadding(0, dp(4), 0, dp(4)) })
-            card.addView(label("商户：${sample.merchant}", 12f, ink))
-            card.addView(label("原文：${sample.title.ifEmpty { "(无标题)" }} / ${sample.text}", 11f, muted).apply {
-                setPadding(0, dp(5), 0, 0)
-            })
-            if (sample.note == "no_amount") card.addView(label("⚠ 未能从这段文字提取金额", 11f, Color.parseColor("#A05A2C")))
-            if (sample.note == "pending_confirm") card.addView(label("⚠ 红包支付确认页，尚未确认是否发出；账单到达后会合并", 11f, Color.parseColor("#A05A2C")))
-            samplesView.addView(card, cardParams())
+            row.findViewById<TextView>(R.id.textMeta).text =
+                "$source · ${timeFormat.format(Date(sample.at))}"
+            val amount = row.findViewById<TextView>(R.id.textAmount)
+            amount.text = PaymentParser.amountLabel(sample.amountCents)
+            amount.setTextColor(
+                when {
+                    sample.amountCents == null -> getColor(R.color.warm)
+                    sample.direction == Direction.INCOME || sample.direction == Direction.REFUND ->
+                        getColor(R.color.green)
+                    else -> getColor(R.color.ink)
+                }
+            )
+            row.findViewById<TextView>(R.id.textDirection).text = when {
+                sample.note == "pending_confirm" -> "待确认"
+                sample.note == "no_amount" -> "未识别金额"
+                else -> PaymentParser.directionLabel(sample.direction)
+            }
+            containerSamples.addView(row)
+        }
+        if (items.size > 3) {
+            containerSamples.addView(hint("另有 ${items.size - 3} 条；同步后可在电脑端查看。"))
         }
     }
 
     private fun renderCalendar() {
-        calendarView.removeAllViews()
+        val status = calendarPrefs.getString("status", "尚未同步手机日历").orEmpty()
+        val last = calendarPrefs.getLong("lastSuccess", 0L)
         val granted = checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            calendarView.addView(hint("未授权日历。点上方“授权日历”后刷新。"))
+        val text = buildString {
+            append(status)
+            if (last > 0) append("\n最近完整同步：${timeFormat.format(Date(last))}")
+            if (!granted) append("\n日历未授权，同步会失败。")
+        }
+        textCalendarStatus.text = text
+        textCalendarStatus.setTextColor(
+            if (!granted) getColor(R.color.warm) else getColor(R.color.ink)
+        )
+    }
+
+    private fun renderBackground() {
+        val power = getSystemService(POWER_SERVICE) as PowerManager
+        val ignoring = power.isIgnoringBatteryOptimizations(packageName)
+        textBackgroundStatus.text =
+            "电池优化：${if (ignoring) "已关闭" else "未关闭"}\n最近任务卡片：已隐藏"
+        textBackgroundStatus.setTextColor(
+            if (ignoring) getColor(R.color.ink) else getColor(R.color.warm)
+        )
+        buttonBatteryOptimization.isEnabled = !ignoring
+        buttonBatteryOptimization.text = if (ignoring) "电池优化已关闭" else "关闭电池优化"
+    }
+
+    private fun requestBatteryExemption() {
+        val power = getSystemService(POWER_SERVICE) as PowerManager
+        if (power.isIgnoringBatteryOptimizations(packageName)) {
+            toast("电池优化已关闭")
+            renderBackground()
             return
         }
-        val items = runCatching { CalendarReader.upcoming(this) }.getOrElse { emptyList() }
-        if (items.isEmpty()) {
-            calendarView.addView(hint("未来 7 天没有读到日程。确认课表已经同步到系统日历。"))
-            return
+        val direct = Intent(
+            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+            Uri.parse("package:$packageName"),
+        )
+        runCatching { startActivity(direct) }.onFailure {
+            runCatching { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                .onFailure { openAppDetails() }
         }
-        val dayFormat = SimpleDateFormat("MM-dd EEE", Locale.CHINA)
-        for (item in items) {
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(10), dp(14), dp(10))
-                setBackgroundColor(Color.WHITE)
+        handler.postDelayed({ renderBackground() }, 800)
+    }
+
+    private fun openAppDetails() {
+        runCatching {
+            startActivity(
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:$packageName"),
+                )
+            )
+        }.onFailure { toast("无法打开应用设置，请手动进入系统设置") }
+    }
+
+    private fun renderDebugStatus() {
+        val ping = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        val granted = runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }
+            .getOrDefault(false)
+        val shizuku = when {
+            !ping -> "Shizuku 未运行"
+            !granted -> "Shizuku 未授权"
+            else -> "Shizuku 已授权"
+        }
+        val notifications = if (notificationAccessEnabled()) "通知使用权已开" else "通知使用权未开"
+        val calendar = if (checkSelfPermission(Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED) {
+            "日历已授权"
+        } else {
+            "日历未授权"
+        }
+        val accessibility = if (accessibilityEnabled()) "无障碍已开启" else "无障碍未开启"
+        textDebugStatus.text = "$shizuku\n$notifications · $calendar\n$accessibility"
+    }
+
+    private fun onCaptureToggled(checked: Boolean) {
+        if (checked) {
+            if (accessibilityEnabled()) {
+                renderCapture()
+                return
             }
-            card.addView(label("${dayFormat.format(Date(item.begin))}  ${timeFormat.format(Date(item.begin))}–${timeFormat.format(Date(item.end))}", 11f, green, true))
-            card.addView(label(item.title, 15f, ink, true).apply { setPadding(0, dp(3), 0, 0) })
-            if (item.location.isNotEmpty()) card.addView(label(item.location, 12f, muted))
-            calendarView.addView(card, cardParams())
+            if (shizukuReady()) {
+                runCatching { ShizukuBridge.enableAccessibility(packageName) }
+                    .onSuccess {
+                        toast("自动记账已开启")
+                        handler.postDelayed({ renderAll() }, 500)
+                    }
+                    .onFailure { openAccessibilitySettings("请在系统设置中开启「顺手采集」") }
+            } else {
+                openAccessibilitySettings("请在系统设置中开启「顺手采集」")
+            }
+        } else {
+            if (!accessibilityEnabled()) {
+                renderCapture()
+                return
+            }
+            if (shizukuReady()) {
+                runCatching { ShizukuBridge.disableAccessibility(packageName) }
+                    .onSuccess {
+                        toast("自动记账已关闭")
+                        handler.postDelayed({ renderAll() }, 400)
+                    }
+                    .onFailure { openAccessibilitySettings("请在系统设置中关闭「顺手采集」") }
+            } else {
+                openAccessibilitySettings("请在系统设置中关闭「顺手采集」")
+            }
         }
+    }
+
+    private fun openAccessibilitySettings(message: String) {
+        toast(message)
+        runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            .onFailure { toast("无法打开系统设置，请手动进入无障碍设置") }
+        handler.postDelayed({ renderCapture() }, 800)
+    }
+
+    private fun syncSamples() {
+        val url = savedSyncUrl()
+        val password = savedSyncPassword()
+        val samples = SampleStore.all()
+        if (samples.isEmpty()) {
+            toast("还没有样本")
+            return
+        }
+        toast("正在同步…")
+        Thread {
+            val result = runCatching {
+                var token = SyncSession.token(this@MainActivity, url, password)
+                try {
+                    SyncClient.upload(url, samples, token)
+                } catch (error: SyncHttpException) {
+                    if (error.status != 401) throw error
+                    SyncSession.clear(this@MainActivity)
+                    token = SyncSession.token(this@MainActivity, url, password)
+                    SyncClient.upload(url, samples, token)
+                }
+            }
+            runOnUiThread {
+                result.onSuccess {
+                    probePrefs.edit()
+                        .putLong("lastSampleSync", System.currentTimeMillis())
+                        .putString("lastSampleMessage", "已上传 ${samples.size} 条样本")
+                        .apply()
+                    renderSync()
+                    toast("已同步 ${samples.size} 条到电脑")
+                }.onFailure {
+                    val reason = it.message ?: "请检查连接"
+                    probePrefs.edit().putString("lastSampleMessage", "同步失败：$reason").apply()
+                    renderSync()
+                    toast("同步失败：$reason")
+                }
+            }
+        }.start()
+    }
+
+    private fun testConnection() {
+        val url = savedSyncUrl()
+        val password = savedSyncPassword()
+        if (password.isBlank()) {
+            toast("请先填访问口令")
+            return
+        }
+        toast("正在测试…")
+        Thread {
+            val result = runCatching { SyncClient.login(url, password) }
+            runOnUiThread {
+                result.onSuccess { toast("连接成功，可以同步样本") }
+                    .onFailure { toast("连接失败：${it.message ?: "请检查地址和口令"}") }
+            }
+        }.start()
+    }
+
+    private fun savedSyncUrl(): String {
+        var value = syncUrlInput.text.toString().trim().ifEmpty { "http://127.0.0.1:18787" }
+        if (!value.startsWith("http://") && !value.startsWith("https://")) value = "http://$value"
+        probePrefs.edit().putString("syncUrl", value).apply()
+        return value
+    }
+
+    private fun savedSyncPassword(): String {
+        val value = syncPasswordInput.text.toString().trim()
+        probePrefs.edit().putString("syncPassword", value).apply()
+        return value
+    }
+
+    private fun confirmClearSamples() {
+        AlertDialog.Builder(this)
+            .setTitle("清空本机样本？")
+            .setMessage("只删除手机上尚未清空的样本，不影响电脑账本。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("清空") { _, _ ->
+                SampleStore.clear(this)
+                renderSamples()
+                renderCapture()
+            }
+            .show()
     }
 
     private fun copySamples() {
@@ -249,19 +479,8 @@ class MainActivity : Activity() {
         toast("已复制 ${SampleStore.all().size} 条样本")
     }
 
-    private fun renderShizuku() {
-        if (!::shizukuView.isInitialized) return
-        val ping = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
-        val granted = runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }.getOrDefault(false)
-        shizukuView.text = when {
-            !ping -> "Shizuku 未运行：先安装并启动 Shizuku。"
-            !granted -> "Shizuku 已运行，尚未授权给顺手采集。"
-            else -> "Shizuku 已授权，可一键开启无障碍或授权日历。"
-        }
-    }
-
     private fun requestShizuku() {
-        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false).not()) {
+        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             toast("Shizuku 未运行")
             return
         }
@@ -271,13 +490,6 @@ class MainActivity : Activity() {
         }
         runCatching { Shizuku.requestPermission(shizukuRequestCode) }
             .onFailure { toast("请求失败：${it.message}") }
-    }
-
-    private fun enableAccessibilityViaShizuku() {
-        if (!shizukuReady()) return
-        runCatching { ShizukuBridge.enableAccessibility(packageName) }
-            .onSuccess { toast(it); renderAll() }
-            .onFailure { toast("开启失败：${it.message}") }
     }
 
     private fun readScreenViaShizuku() {
@@ -302,49 +514,6 @@ class MainActivity : Activity() {
         if (!shizukuReady()) return
         toast("5 秒后截图识别，请现在切到支付成功页")
         captureAndRecognize(5_000)
-    }
-
-    private fun savedSyncUrl(): String {
-        val value = syncUrlInput.text.toString().trim().ifEmpty { "http://127.0.0.1:18787" }
-        getSharedPreferences("shunshou_probe", MODE_PRIVATE).edit().putString("syncUrl", value).apply()
-        return value
-    }
-
-    private fun savedSyncPassword(): String {
-        val value = syncTokenInput.text.toString().trim()
-        getSharedPreferences("shunshou_probe", MODE_PRIVATE).edit().putString("syncPassword", value).apply()
-        return value
-    }
-
-    private fun testSync() {
-        val url = savedSyncUrl()
-        Thread {
-            val result = runCatching { SyncClient.health(url) }
-            runOnUiThread {
-                result.onSuccess { toast("连接成功：${it.take(120)}") }
-                    .onFailure { toast("连接失败：${it.message}") }
-            }
-        }.start()
-    }
-
-    private fun syncSamples() {
-        val url = savedSyncUrl()
-        val password = savedSyncPassword()
-        val samples = SampleStore.all()
-        if (samples.isEmpty()) {
-            toast("还没有样本")
-            return
-        }
-        Thread {
-            val result = runCatching {
-                val token = SyncSession.token(this@MainActivity, url, password)
-                SyncClient.upload(url, samples, token)
-            }
-            runOnUiThread {
-                result.onSuccess { toast("已同步 ${samples.size} 条到电脑") }
-                    .onFailure { toast("同步失败：${it.message}") }
-            }
-        }.start()
     }
 
     private fun captureAndRecognize(delayMs: Long) {
@@ -387,13 +556,12 @@ class MainActivity : Activity() {
             snapshot.packageName, snapshot.texts, System.currentTimeMillis()
         )
         if (sample == null) {
-            toast("当前页面没有支付文字")
+            toast("当前页面没有交易结果文字")
             return
         }
         SampleStore.add(this, sample)
         toast(
             when (sample.note) {
-                "not_payment" -> "已保存原始屏幕，但没匹配到交易结果"
                 "no_amount" -> "已记录，但未识别金额"
                 "pending_confirm" -> "已记录待确认：完成支付后保留账单"
                 else -> "已记录"
@@ -404,17 +572,20 @@ class MainActivity : Activity() {
     private fun grantCalendarViaShizuku() {
         if (!shizukuReady()) return
         runCatching { ShizukuBridge.grantCalendar(packageName) }
-            .onSuccess { toast(it); renderAll() }
+            .onSuccess {
+                toast(it)
+                renderAll()
+            }
             .onFailure { toast("授权失败：${it.message}") }
     }
 
     private fun shizukuReady(): Boolean {
-        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false).not()) {
+        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             toast("Shizuku 未运行")
             return false
         }
-        if (runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }.getOrDefault(false).not()) {
-            toast("请先请求 Shizuku 权限")
+        if (!runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }.getOrDefault(false)) {
+            toast("请先在调试工具里授权 Shizuku")
             return false
         }
         return true
@@ -435,44 +606,16 @@ class MainActivity : Activity() {
             .onFailure { toast("无法打开系统设置，请手动进入设置页") }
     }
 
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-
-    private fun section(title: String): TextView = label(title, 16f, ink, true).apply {
-        setPadding(0, dp(28), 0, dp(6))
-    }
-
-    private fun hint(message: String): TextView = label(message, 12f, muted).apply {
-        setPadding(dp(14), dp(12), dp(14), dp(12))
-        setBackgroundColor(Color.WHITE)
-    }
-
-    private fun label(text: String, size: Float, color: Int, bold: Boolean = false): TextView = TextView(this).apply {
-        this.text = text
-        textSize = size
-        setTextColor(color)
-        if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
-        setLineSpacing(dp(3).toFloat(), 1f)
-    }
-
-    private fun action(title: String, onClick: () -> Unit): Button = Button(this).apply {
-        text = title
+    private fun hint(message: String): TextView = TextView(this).apply {
+        text = message
         textSize = 12f
-        setOnClickListener { onClick() }
+        setTextColor(getColor(R.color.muted))
+        setLineSpacing(dp(3).toFloat(), 1f)
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        setBackgroundResource(R.drawable.bg_soft)
     }
 
-    private fun row(vararg views: View): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        setPadding(0, dp(8), 0, dp(4))
-        for (view in views) {
-            addView(view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginEnd = dp(6)
-            })
-        }
-    }
-
-    private fun cardParams(): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-    ).apply { bottomMargin = dp(8) }
+    private fun toast(message: String?) = Toast.makeText(this, message ?: "", Toast.LENGTH_SHORT).show()
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

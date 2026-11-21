@@ -26,14 +26,6 @@ data class PaymentSample(
     val note: String = "",
 )
 
-data class CalendarItem(
-    val title: String,
-    val location: String,
-    val begin: Long,
-    val end: Long,
-    val calendarName: String,
-)
-
 object PaymentParser {
     const val ALIPAY = "com.eg.android.AlipayGphone"
     const val WECHAT = "com.tencent.mm"
@@ -50,10 +42,25 @@ object PaymentParser {
         Regex("转账成功"), Regex("支付成功"), Regex("付款成功"), Regex("已支付"),
         Regex("支付金额"), Regex("收款成功"), Regex("已收款"), Regex("你已收款"),
         Regex("已存入零钱"), Regex("已收钱"), Regex("红包已领取"),
-        Regex("已到账"), Regex("到账金额"), Regex("付款方"), Regex("收款到账"),
+        Regex("已到账"), Regex("到账金额"), Regex("付款方(?!式)"), Regex("收款到账"),
         Regex("红包已发出"), Regex("已发出红包"), Regex("已被接收"),
         Regex("领取了[^，,。\\s]{1,24}红包"), Regex("付款给"),
         Regex("向[^，,。\\s]{1,24}转账"),
+    )
+    /** 结果页除锚点外还要有这些上下文；首页消息卡片只有“付款成功”几个字，不能入账。 */
+    private val resultContextPatterns = listOf(
+        Regex("完成"), Regex("返回商家"), Regex("查看账单"), Regex("账单详情"),
+        Regex("当前状态"), Regex("交易单号"), Regex("查看凭证"),
+        Regex("收款方"), Regex("付款方(?!式)"), Regex("已到账"), Regex("到账金额"),
+        Regex("已存入零钱"), Regex("已领取"), Regex("已被接收"),
+    )
+    /** 付款前的授权/协议页也会出现“支付成功”营销文案和金额，必须排除。 */
+    private val preResultPatterns = listOf(
+        "我已阅读并同意", "付款并开通", "付款授权", "确认付款", "点击支付", "立即支付", "去支付",
+    )
+    private val standaloneResultPatterns = listOf(
+        Regex("领取了[^，,。\\s]{1,24}红包"), Regex("红包已领取"),
+        Regex("红包已发出"), Regex("已发出红包"), Regex("已被接收"),
     )
     private val resultPatterns = listOf(
         Regex("转账成功"), Regex("支付成功"), Regex("付款成功"), Regex("收款成功"),
@@ -65,13 +72,13 @@ object PaymentParser {
     private fun isRedPacketConfirm(text: String): Boolean =
         text.contains("微信红包") && (text.contains("付款方式") || text.contains("使用密码"))
 
-    /** 所有微信支付在指纹前都会经过这张确认单，可作为统一入口先记“待确认”。 */
+    /** 所有微信支付在指纹前都会经过这张确认单；支付宝收付款页也有“付款方式/支付”，不能误判。 */
     private fun isConfirmSheet(text: String): Boolean =
-        (text.contains("付款方式") || text.contains("使用密码")) &&
+        text.contains("付款方式") && text.contains("使用密码") &&
             text.contains("支付") && !text.contains("支付成功")
     private val merchantPatterns = listOf(
         Regex("""收款方[：:]?\s*([^，,。\s]{1,24})"""),
-        Regex("""付款方[：:]?\s*([^，,。\s]{1,24})"""),
+        Regex("""付款方(?!式)[：:]?\s*([^，,。\s]{1,24})"""),
         Regex("""待\s*([^，,。\s]{1,12}?)\s*确认收款"""),
         Regex("""向\s*([^，,。\s]{1,24}?)\s*转账"""),
         Regex("""向\s*([^，,。\s]{1,24}?)\s*付款"""),
@@ -98,7 +105,11 @@ object PaymentParser {
     /** 只有交易结果锚点才计入账本；菜单、广告里的“转账/红包”不算。 */
     fun hasAnchor(text: String): Boolean {
         val normalized = normalize(text)
-        return isConfirmSheet(normalized) || anchorPatterns.any { it.containsMatchIn(normalized) }
+        if (isConfirmSheet(normalized)) return true
+        if (preResultPatterns.any { normalized.contains(it) }) return false
+        if (standaloneResultPatterns.any { it.containsMatchIn(normalized) }) return true
+        return anchorPatterns.any { it.containsMatchIn(normalized) } &&
+            resultContextPatterns.any { it.containsMatchIn(normalized) }
     }
 
     /** 成功页的优先级高于支付前页面，用于同金额合并时保留更可信的方向。 */
@@ -137,7 +148,7 @@ object PaymentParser {
             listOf("转账给", "已转账", "发出红包", "红包已发出", "已发出红包", "发给", "已被接收").any { joined.contains(it) } -> Direction.EXPENSE
             listOf("支付成功", "已支付", "付款", "扣款", "消费", "支出", "支付金额").any { joined.contains(it) } -> Direction.EXPENSE
             (joined.contains("收款") && !joined.contains("收款方")) -> Direction.INCOME
-            listOf("收款成功", "已收款", "你已收款", "到账", "入账", "收到", "已收钱", "领取了", "已存入零钱", "收钱", "付款方", "已到账", "到账金额", "收款到账").any { joined.contains(it) } -> Direction.INCOME
+            listOf("收款成功", "已收款", "你已收款", "到账", "入账", "收到", "已收钱", "领取了", "已存入零钱", "收钱", "已到账", "到账金额", "收款到账").any { joined.contains(it) } -> Direction.INCOME
             else -> Direction.UNKNOWN
         }
         val merchant = if (redPacketConfirm) "微信红包" else {

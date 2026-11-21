@@ -1,7 +1,7 @@
-import { createDemoRecords, demoWorkplaces } from './demo';
-import { isDateKey } from '../domain/ledger';
-import { expenseCategories } from '../domain/records';
-import type { LedgerState } from '../domain/records';
+import { createDemoRecords, demoWorkplaces } from './demo.ts';
+import { isDateKey } from '../domain/ledger.ts';
+import { expenseCategories } from '../domain/records.ts';
+import type { LedgerState } from '../domain/records.ts';
 
 export const STORAGE_KEY = 'shunshou.ledger.v1';
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
