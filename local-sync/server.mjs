@@ -6,10 +6,16 @@ const PORT = Number(process.env.PORT || 18787);
 const DATA_DIR = path.join(process.cwd(), 'local-sync', 'data');
 const FILE = path.join(DATA_DIR, 'samples.json');
 const MAX_BODY = 1_000_000;
+// 部署到 StepPage 的站点来源可用 ALLOWED_ORIGINS 追加，逗号分隔。
 const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5173',
   'http://localhost:5173',
   'http://127.0.0.1:4173',
+  'https://swift-meadow-487f.page.stepcloud.com',
+  ...String(process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean),
 ]);
 
 function load() {
@@ -107,5 +113,5 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`顺手本机同步服务: http://127.0.0.1:${PORT}`);
-  console.log('手机可用同一 Wi-Fi 的电脑地址，或 adb reverse tcp:8787 tcp:8787');
+  console.log(`手机可用同一 Wi-Fi 的电脑地址，或 adb reverse tcp:${PORT} tcp:${PORT}`);
 });
