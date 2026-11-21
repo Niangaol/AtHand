@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { toDateKey } from '../domain/dates';
 import { buildRecord, buildWorkplace, parseAmount } from '../domain/ledger';
 import type { RecordDraft } from '../domain/ledger';
-import type { LedgerState } from '../domain/records';
+import type { LedgerState, RecordEntry } from '../domain/records';
 import { createInitialState, loadLedger, saveLedger, STORAGE_KEY } from './storage';
 
 type Result = { ok: true } | { ok: false; message: string };
@@ -17,6 +17,7 @@ type RecordsData = LedgerState & {
   updateRate: (rate: string) => Promise<Result>;
   clearExamples: () => Promise<Result>;
   resetLedger: () => Promise<Result>;
+  importRecords: (records: RecordEntry[]) => Promise<Result>;
 };
 const RecordsContext = createContext<RecordsData | null>(null);
 const browserStorage: StoragePort = {
@@ -102,8 +103,19 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
   function resetLedger(): Promise<Result> {
     return commit(() => createInitialState(today, false), true);
   }
+  function importRecords(records: RecordEntry[]): Promise<Result> {
+    return commit((previous) => {
+      const existing = new Set(previous.records.map((record) => record.id));
+      const fresh = records.filter((record) => !existing.has(record.id));
+      if (fresh.length === 0) return previous;
+      return {
+        ...previous,
+        records: [...previous.records.filter((record) => record.source !== 'demo'), ...fresh],
+      };
+    });
+  }
 
-  return <RecordsContext.Provider value={{ ...state, today, error, blocked, saving, rawData: rawRef.current, saveRecord, deleteRecord, saveWorkplace, deleteWorkplace, updateRate, clearExamples, resetLedger }}>{children}</RecordsContext.Provider>;
+  return <RecordsContext.Provider value={{ ...state, today, error, blocked, saving, rawData: rawRef.current, saveRecord, deleteRecord, saveWorkplace, deleteWorkplace, updateRate, clearExamples, resetLedger, importRecords }}>{children}</RecordsContext.Provider>;
 }
 
 export function useRecords(): RecordsData {

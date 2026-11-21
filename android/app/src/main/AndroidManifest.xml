@@ -2,10 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="false"
         android:label="顺手采集"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
@@ -26,6 +28,14 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".SyncReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.shunshou.collector.SYNC" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

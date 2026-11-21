@@ -1,0 +1,58 @@
+package com.shunshou.collector
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+object SyncClient {
+    private const val DEFAULT_URL = "http://127.0.0.1:18787"
+
+    fun urlOrDefault(value: String?): String =
+        value?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: DEFAULT_URL
+
+    fun health(baseUrl: String): String = request(baseUrl, "GET", null)
+
+    fun upload(baseUrl: String, samples: List<PaymentSample>): String {
+        val array = JSONArray()
+        for (sample in samples) {
+            array.put(JSONObject().apply {
+                put("id", sample.id)
+                put("packageName", sample.packageName)
+                put("title", sample.title)
+                put("text", sample.text)
+                put("at", sample.at)
+                put("amountCents", sample.amountCents ?: JSONObject.NULL)
+                put("direction", sample.direction.name)
+                put("merchant", sample.merchant)
+                put("source", sample.source.name)
+                put("note", sample.note)
+            })
+        }
+        return request(baseUrl, "POST", array.toString())
+    }
+
+    private fun request(baseUrl: String, method: String, body: String?): String {
+        val base = urlOrDefault(baseUrl).trimEnd('/')
+        val endpoint = URL(if (method == "GET") "$base/api/health" else "$base/api/samples")
+        val connection = endpoint.openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = method
+            connection.connectTimeout = 5_000
+            connection.readTimeout = 10_000
+            connection.setRequestProperty("Accept", "application/json")
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) throw IllegalStateException("HTTP $code: ${text.take(120)}")
+            text
+        } finally {
+            connection.disconnect()
+        }
+    }
+}

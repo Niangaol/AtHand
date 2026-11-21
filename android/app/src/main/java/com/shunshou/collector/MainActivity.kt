@@ -10,9 +10,11 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -34,6 +36,7 @@ class MainActivity : Activity() {
     private lateinit var samplesView: LinearLayout
     private lateinit var calendarView: LinearLayout
     private lateinit var shizukuView: TextView
+    private lateinit var syncUrlInput: EditText
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
     private val green = Color.parseColor("#295C48")
     private val ink = Color.parseColor("#24382D")
@@ -105,6 +108,20 @@ class MainActivity : Activity() {
                 action("截图识别（当前屏）") { readScreenByScreenshot() },
             ))
             addView(label("Shizuku 用 uiautomator 或截图 OCR 读取当前屏幕；OCR 在本机运行，不保存图片、不上传。微信红包没有转账成功页，请打开红包详情或账单页再读屏。", 11f, muted))
+
+            addView(section("本机同步"))
+            syncUrlInput = EditText(this@MainActivity).apply {
+                setText(getSharedPreferences("shunshou_probe", MODE_PRIVATE).getString("syncUrl", "http://127.0.0.1:18787"))
+                hint = "http://电脑地址:18787"
+                inputType = InputType.TYPE_TEXT_VARIATION_URI
+                setSingleLine(true)
+            }
+            addView(syncUrlInput)
+            addView(row(
+                action("测试连接") { testSync() },
+                action("同步样本") { syncSamples() },
+            ))
+            addView(label("电脑运行 npm run sync；USB 调试可先 adb reverse tcp:18787 tcp:18787，或填电脑局域网 IP。", 11f, muted))
 
             addView(section("最近捕获"))
             addView(label("先开启通知使用权，再做一笔小额支付。每位助手会记录原文和解析结果，便于判断金额是否可见。", 11f, muted))
@@ -277,6 +294,39 @@ class MainActivity : Activity() {
         if (!shizukuReady()) return
         toast("5 秒后截图识别，请现在切到支付成功页")
         captureAndRecognize(5_000)
+    }
+
+    private fun savedSyncUrl(): String {
+        val value = syncUrlInput.text.toString().trim().ifEmpty { "http://127.0.0.1:18787" }
+        getSharedPreferences("shunshou_probe", MODE_PRIVATE).edit().putString("syncUrl", value).apply()
+        return value
+    }
+
+    private fun testSync() {
+        val url = savedSyncUrl()
+        Thread {
+            val result = runCatching { SyncClient.health(url) }
+            runOnUiThread {
+                result.onSuccess { toast("连接成功：${it.take(120)}") }
+                    .onFailure { toast("连接失败：${it.message}") }
+            }
+        }.start()
+    }
+
+    private fun syncSamples() {
+        val url = savedSyncUrl()
+        val samples = SampleStore.all()
+        if (samples.isEmpty()) {
+            toast("还没有样本")
+            return
+        }
+        Thread {
+            val result = runCatching { SyncClient.upload(url, samples) }
+            runOnUiThread {
+                result.onSuccess { toast("已同步 ${samples.size} 条到电脑") }
+                    .onFailure { toast("同步失败：${it.message}") }
+            }
+        }.start()
     }
 
     private fun captureAndRecognize(delayMs: Long) {
