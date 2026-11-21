@@ -13,8 +13,11 @@ class SyncReceiver : BroadcastReceiver() {
             try {
                 val prefs = context.getSharedPreferences("shunshou_probe", Context.MODE_PRIVATE)
                 val url = SyncClient.urlOrDefault(prefs.getString("syncUrl", null))
+                val password = prefs.getString("syncPassword", null).orEmpty()
                 val samples = SampleStore.all()
-                val response = SyncClient.upload(url, samples)
+                if (samples.isEmpty()) return@Thread
+                val token = SyncSession.token(context, url, password)
+                val response = SyncClient.upload(url, samples, token)
                 Log.i("ShunshouProbe", "sync ok samples=${samples.size} response=${response.take(200)}")
             } catch (error: Exception) {
                 Log.w("ShunshouProbe", "sync failed ${error.message}")

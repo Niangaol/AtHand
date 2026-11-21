@@ -34,7 +34,7 @@ export function Shell() {
         {error ? <div className="storage-warning" role="alert">{error}{blocked ? <Link to="/settings">前往数据设置</Link> : null}</div> : null}
         <Outlet />
       </main>
-      <footer className="app-footer"><span>顺手，让生活少一点零散。</span><span>v0.2 本机版 · {hasExamples ? '当前账单为示例' : '数据仅保存在当前浏览器'}</span></footer>
+      <footer className="app-footer"><span>顺手，让生活少一点零散。</span><span>v0.3 · {hasExamples ? '当前账单为示例' : '账本存本机，可连电脑同步'}</span></footer>
     </div>
   </div>;
 }

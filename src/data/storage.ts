@@ -19,7 +19,7 @@ function positiveInteger(value: unknown): value is number {
 function text(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 }
-function isLedger(value: unknown): value is LedgerState {
+export function isLedgerState(value: unknown): value is LedgerState {
   if (!isObject(value) || value.version !== 1 || !Array.isArray(value.records) || !Array.isArray(value.workplaces)
     || !isObject(value.settings) || !positiveInteger(value.settings.hourlyRateCents) || value.settings.hourlyRateCents > 999999999) return false;
   const units = value.workplaces;
@@ -50,7 +50,7 @@ export function loadLedger(storage: StoragePort, today: string): { state: Ledger
     raw = storage.getItem(STORAGE_KEY);
     if (raw === null) return { state: createInitialState(today), raw, error: '' };
     const parsed: unknown = JSON.parse(raw);
-    if (!isLedger(parsed)) throw new Error('invalid ledger');
+    if (!isLedgerState(parsed)) throw new Error('invalid ledger');
     return { state: parsed, raw, error: '' };
   } catch {
     return { state: createInitialState(today, false), raw, error: '无法读取本地账本，已暂停写入以保护原数据。请先到设置下载原始备份，再重置账本；也可尝试刷新。' };

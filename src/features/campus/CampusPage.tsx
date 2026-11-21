@@ -66,6 +66,6 @@ export function CampusPage() {
         </> : <div className="answer-empty"><GraduationCap size={36} strokeWidth={1.3} /><h2>还没问过</h2><p>填好口令，点一个常用问题。拿不到数据时，它会明确说没拿到，不会编造。</p></div>}
       </section>
     </div>
-    <section className="campus-boundary"><Info size={19} /><div><h3>本机校园模块</h3><p>杭电助手只接受本机请求，部署在 Qoder Sites 的公网版暂时连不到它；演示时请在本机打开顺手。顺手只回答问题、给出来源，不代提交、不代签字、不代付款。</p></div></section>
+    <section className="campus-boundary"><Info size={19} /><div><h3>校园模块</h3><p>本机使用时由本机的杭电助手回答；远程使用时请求经你的电脑转发，杭电助手本身仍只监听本机。顺手只回答问题、给出来源，不代提交、不代签字、不代付款。</p></div></section>
   </>;
 }

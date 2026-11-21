@@ -1,13 +1,15 @@
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { toDateKey } from '../domain/dates';
 import { buildRecord, buildWorkplace, parseAmount } from '../domain/ledger';
 import type { RecordDraft } from '../domain/ledger';
 import type { LedgerState, RecordEntry } from '../domain/records';
-import { createInitialState, loadLedger, saveLedger, STORAGE_KEY } from './storage';
+import { clearGatewaySession, gatewayFetch, isGatewayConnected } from './gateway';
+import { createInitialState, isLedgerState, loadLedger, saveLedger, STORAGE_KEY } from './storage';
 
 type Result = { ok: true } | { ok: false; message: string };
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
+export type RemoteState = { status: 'off' | 'syncing' | 'synced' | 'conflict' | 'error'; message: string; updatedAt: string | null };
 type RecordsData = LedgerState & {
   today: string; error: string; rawData: string | null; blocked: boolean; saving: boolean;
   saveRecord: (draft: RecordDraft, id?: string) => Promise<Result>;
@@ -18,12 +20,31 @@ type RecordsData = LedgerState & {
   clearExamples: () => Promise<Result>;
   resetLedger: () => Promise<Result>;
   importRecords: (records: RecordEntry[]) => Promise<Result>;
+  remote: RemoteState;
+  refreshRemote: () => Promise<Result>;
+  uploadLocalToRemote: () => Promise<Result>;
+  adoptRemote: () => Promise<Result>;
+  disconnectRemote: () => void;
 };
 const RecordsContext = createContext<RecordsData | null>(null);
+const PENDING_KEY = 'shunshou.ledger.pending';
 const browserStorage: StoragePort = {
   getItem: (key) => window.localStorage.getItem(key),
   setItem: (key, value) => window.localStorage.setItem(key, value),
 };
+
+function readPending(): boolean {
+  try { return window.localStorage.getItem(PENDING_KEY) === '1'; } catch { return false; }
+}
+function writePending(value: boolean): void {
+  try {
+    if (value) window.localStorage.setItem(PENDING_KEY, '1');
+    else window.localStorage.removeItem(PENDING_KEY);
+  } catch { /* 存储不可用时只影响下次提示。 */ }
+}
+function sameLedger(left: LedgerState, right: LedgerState): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 export function RecordsProvider({ initialState, today: fixedToday, storage = browserStorage, children }: {
   initialState?: LedgerState; today?: string; storage?: StoragePort; children: ReactNode;
@@ -37,6 +58,160 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
   const rawRef = useRef(loaded.raw);
   const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
+  const connected = isGatewayConnected();
+  const [remote, setRemote] = useState<RemoteState>(() => connected
+    ? { status: 'syncing', message: '正在读取电脑上的账本…', updatedAt: null }
+    : { status: 'off', message: '', updatedAt: null });
+  const updatedAtRef = useRef<string | null>(null);
+  const pendingRef = useRef(readPending());
+  const pushChainRef = useRef<Promise<unknown>>(Promise.resolve());
+
+  async function applyExternal(next: LedgerState): Promise<Result> {
+    try {
+      if (!navigator.locks) throw new Error('当前浏览器不支持安全的本地写入，请使用新版浏览器并通过 HTTPS 打开。');
+      return await navigator.locks.request(STORAGE_KEY, () => {
+        rawRef.current = saveLedger(storage, next, rawRef.current);
+        stateRef.current = next;
+        setState(next);
+        setError('');
+        setBlocked(false);
+        return { ok: true } as const;
+      });
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : '写入本机失败。';
+      setError(message);
+      return { ok: false, message };
+    }
+  }
+
+  async function pushRemote(force = false): Promise<Result> {
+    if (!isGatewayConnected()) return { ok: false, message: '还没有连接电脑。' };
+    setRemote({ status: 'syncing', message: '正在保存到电脑…', updatedAt: updatedAtRef.current });
+    try {
+      const response = await gatewayFetch('/api/ledger', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ledger: stateRef.current, baseUpdatedAt: updatedAtRef.current, force }),
+      });
+      const body = (await response.json().catch(() => null)) as { ok?: unknown; updatedAt?: unknown; ledger?: unknown } | null;
+      if (response.status === 401) {
+        clearGatewaySession();
+        setRemote({ status: 'error', message: '登录已过期，请重新连接电脑。', updatedAt: updatedAtRef.current });
+        return { ok: false, message: '登录已过期，请重新连接电脑。' };
+      }
+      if (response.status === 409) {
+        pendingRef.current = true;
+        writePending(true);
+        setRemote({ status: 'conflict', message: '电脑上的账本已被其他设备更新，请选择保留哪一份。', updatedAt: updatedAtRef.current });
+        return { ok: false, message: '电脑上的账本已被更新，请选择保留哪一份。' };
+      }
+      if (!response.ok || body?.ok !== true || typeof body.updatedAt !== 'string') throw new Error('电脑上的服务返回异常。');
+      updatedAtRef.current = body.updatedAt;
+      pendingRef.current = false;
+      writePending(false);
+      setRemote({ status: 'synced', message: '已同步到电脑。', updatedAt: body.updatedAt });
+      return { ok: true };
+    } catch (reason) {
+      pendingRef.current = true;
+      writePending(true);
+      const detail = reason instanceof Error ? reason.message : '连不上电脑。';
+      setRemote({ status: 'error', message: `${detail} 修改仍保存在本机，联网后可再试。`, updatedAt: updatedAtRef.current });
+      return { ok: false, message: detail };
+    }
+  }
+
+  function queuePush(): void {
+    if (!isGatewayConnected()) return;
+    pushChainRef.current = pushChainRef.current
+      .then(() => (isGatewayConnected() ? pushRemote(false) : undefined))
+      .catch(() => undefined);
+  }
+
+  async function refreshRemote(): Promise<Result> {
+    if (!isGatewayConnected()) {
+      setRemote({ status: 'off', message: '', updatedAt: null });
+      return { ok: true };
+    }
+    setRemote({ status: 'syncing', message: '正在读取电脑上的账本…', updatedAt: updatedAtRef.current });
+    try {
+      const response = await gatewayFetch('/api/ledger');
+      const body = (await response.json().catch(() => null)) as { ok?: unknown; ledger?: unknown; updatedAt?: unknown } | null;
+      if (response.status === 401) {
+        clearGatewaySession();
+        setRemote({ status: 'off', message: '登录已过期，请重新连接电脑。', updatedAt: null });
+        return { ok: false, message: '登录已过期，请重新连接电脑。' };
+      }
+      if (!response.ok || body?.ok !== true) throw new Error('读取电脑账本失败。');
+      const updatedAt = typeof body.updatedAt === 'string' ? body.updatedAt : null;
+      if (body.ledger === null || body.ledger === undefined) {
+        const pushed = await pushRemote(false);
+        if (pushed.ok) setRemote({ status: 'synced', message: '已把本机账本上传到电脑。', updatedAt: updatedAtRef.current });
+        return pushed;
+      }
+      if (!isLedgerState(body.ledger)) throw new Error('电脑上的账本格式无法识别。');
+      const serverLedger = body.ledger;
+      if (sameLedger(serverLedger, stateRef.current)) {
+        updatedAtRef.current = updatedAt;
+        pendingRef.current = false;
+        writePending(false);
+        setRemote({ status: 'synced', message: '已与电脑一致。', updatedAt });
+        return { ok: true };
+      }
+      if (pendingRef.current) {
+        setRemote({ status: 'conflict', message: '本机有未同步的修改，电脑上也有新内容，请选择保留哪一份。', updatedAt });
+        return { ok: false, message: '本机有未同步的修改，请选择保留哪一份。' };
+      }
+      const applied = await applyExternal(serverLedger);
+      if (!applied.ok) return applied;
+      updatedAtRef.current = updatedAt;
+      pendingRef.current = false;
+      writePending(false);
+      setRemote({ status: 'synced', message: '已读取电脑上的账本。', updatedAt });
+      return { ok: true };
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : '读取电脑账本失败。';
+      setRemote({ status: 'error', message, updatedAt: updatedAtRef.current });
+      return { ok: false, message };
+    }
+  }
+
+  async function uploadLocalToRemote(): Promise<Result> {
+    const result = await pushRemote(true);
+    return result;
+  }
+
+  async function adoptRemote(): Promise<Result> {
+    if (!isGatewayConnected()) return { ok: false, message: '还没有连接电脑。' };
+    setRemote({ status: 'syncing', message: '正在读取电脑上的账本…', updatedAt: updatedAtRef.current });
+    try {
+      const response = await gatewayFetch('/api/ledger');
+      const body = (await response.json().catch(() => null)) as { ok?: unknown; ledger?: unknown; updatedAt?: unknown } | null;
+      if (!response.ok || body?.ok !== true) throw new Error('读取电脑账本失败。');
+      if (!isLedgerState(body.ledger)) throw new Error('电脑上还没有账本。');
+      const applied = await applyExternal(body.ledger);
+      if (!applied.ok) return applied;
+      updatedAtRef.current = typeof body.updatedAt === 'string' ? body.updatedAt : null;
+      pendingRef.current = false;
+      writePending(false);
+      setRemote({ status: 'synced', message: '已用电脑上的账本覆盖本机。', updatedAt: updatedAtRef.current });
+      return { ok: true };
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : '读取电脑账本失败。';
+      setRemote({ status: 'error', message, updatedAt: updatedAtRef.current });
+      return { ok: false, message };
+    }
+  }
+
+  function disconnectRemote(): void {
+    clearGatewaySession();
+    setRemote({ status: 'off', message: '已断开；本机账本仍保留。', updatedAt: null });
+  }
+
+  useEffect(() => {
+    if (isGatewayConnected()) void refreshRemote();
+    // 只在首次挂载时尝试读取电脑账本。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function commit(change: (previous: LedgerState) => LedgerState, recovery = false): Promise<Result> {
     if (savingRef.current) return { ok: false, message: '上一笔操作正在保存，请稍候再试。' };
@@ -45,7 +220,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
     try {
       if (blocked && !recovery) throw new Error(loaded.error || '账本暂不可写入，请刷新后重试。');
       if (!navigator.locks) throw new Error('当前浏览器不支持安全的本地写入，请使用新版 Chrome、Edge、Firefox 或 Safari，并通过本机地址或 HTTPS 打开。');
-      return await navigator.locks.request(STORAGE_KEY, () => {
+      const result = await navigator.locks.request(STORAGE_KEY, () => {
         const next = change(stateRef.current);
         rawRef.current = saveLedger(storage, next, rawRef.current);
         stateRef.current = next;
@@ -54,6 +229,8 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
         setBlocked(false);
         return { ok: true } as const;
       });
+      queuePush();
+      return result;
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : '操作失败，请重试。';
       setError(message);
@@ -115,7 +292,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
     });
   }
 
-  return <RecordsContext.Provider value={{ ...state, today, error, blocked, saving, rawData: rawRef.current, saveRecord, deleteRecord, saveWorkplace, deleteWorkplace, updateRate, clearExamples, resetLedger, importRecords }}>{children}</RecordsContext.Provider>;
+  return <RecordsContext.Provider value={{ ...state, today, error, blocked, saving, rawData: rawRef.current, saveRecord, deleteRecord, saveWorkplace, deleteWorkplace, updateRate, clearExamples, resetLedger, importRecords, remote, refreshRemote, uploadLocalToRemote, adoptRemote, disconnectRemote }}>{children}</RecordsContext.Provider>;
 }
 
 export function useRecords(): RecordsData {

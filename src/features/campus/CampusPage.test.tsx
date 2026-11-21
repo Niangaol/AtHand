@@ -42,8 +42,8 @@ it('shows an actionable error for a wrong password', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('口令无效');
 });
 
-it('states the local-only boundary and never promises submission', () => {
+it('states the campus boundary and never promises submission', () => {
   render(<CampusPage />);
-  expect(screen.getByText(/只接受本机请求/)).toBeInTheDocument();
+  expect(screen.getByText(/仍只监听本机/)).toBeInTheDocument();
   expect(screen.getByText(/不代提交/)).toBeInTheDocument();
 });

@@ -31,11 +31,7 @@
 
         <receiver
             android:name=".SyncReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.shunshou.collector.SYNC" />
-            </intent-filter>
-        </receiver>
+            android:exported="false" />
 
         <provider
             android:name="rikka.shizuku.ShizukuProvider"

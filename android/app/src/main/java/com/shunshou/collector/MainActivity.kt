@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     private lateinit var calendarView: LinearLayout
     private lateinit var shizukuView: TextView
     private lateinit var syncUrlInput: EditText
+    private lateinit var syncTokenInput: EditText
     private val timeFormat = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA)
     private val green = Color.parseColor("#295C48")
     private val ink = Color.parseColor("#24382D")
@@ -117,11 +118,18 @@ class MainActivity : Activity() {
                 setSingleLine(true)
             }
             addView(syncUrlInput)
+            syncTokenInput = EditText(this@MainActivity).apply {
+                setText(getSharedPreferences("shunshou_probe", MODE_PRIVATE).getString("syncPassword", ""))
+                hint = "访问口令（电脑首次启动时打印）"
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                setSingleLine(true)
+            }
+            addView(syncTokenInput)
             addView(row(
                 action("测试连接") { testSync() },
                 action("同步样本") { syncSamples() },
             ))
-            addView(label("电脑运行 npm run sync；USB 调试可先 adb reverse tcp:18787 tcp:18787，或填电脑局域网 IP。", 11f, muted))
+            addView(label("电脑运行 npm run sync，填电脑地址和口令；远程用 HTTPS 隧道地址。USB 调试可先 adb reverse tcp:18787 tcp:18787。", 11f, muted))
 
             addView(section("最近捕获"))
             addView(label("先开启通知使用权，再做一笔小额支付。每位助手会记录原文和解析结果，便于判断金额是否可见。", 11f, muted))
@@ -302,6 +310,12 @@ class MainActivity : Activity() {
         return value
     }
 
+    private fun savedSyncPassword(): String {
+        val value = syncTokenInput.text.toString().trim()
+        getSharedPreferences("shunshou_probe", MODE_PRIVATE).edit().putString("syncPassword", value).apply()
+        return value
+    }
+
     private fun testSync() {
         val url = savedSyncUrl()
         Thread {
@@ -315,13 +329,17 @@ class MainActivity : Activity() {
 
     private fun syncSamples() {
         val url = savedSyncUrl()
+        val password = savedSyncPassword()
         val samples = SampleStore.all()
         if (samples.isEmpty()) {
             toast("还没有样本")
             return
         }
         Thread {
-            val result = runCatching { SyncClient.upload(url, samples) }
+            val result = runCatching {
+                val token = SyncSession.token(this@MainActivity, url, password)
+                SyncClient.upload(url, samples, token)
+            }
             runOnUiThread {
                 result.onSuccess { toast("已同步 ${samples.size} 条到电脑") }
                     .onFailure { toast("同步失败：${it.message}") }

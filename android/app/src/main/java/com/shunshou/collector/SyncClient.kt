@@ -1,9 +1,12 @@
 package com.shunshou.collector
 
+import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+
+data class GatewaySession(val token: String, val expiresAt: Long)
 
 object SyncClient {
     private const val DEFAULT_URL = "http://127.0.0.1:18787"
@@ -11,9 +14,35 @@ object SyncClient {
     fun urlOrDefault(value: String?): String =
         value?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: DEFAULT_URL
 
-    fun health(baseUrl: String): String = request(baseUrl, "GET", null)
+    fun health(baseUrl: String): String = request(baseUrl, "GET", null, null)
 
-    fun upload(baseUrl: String, samples: List<PaymentSample>): String {
+    fun login(baseUrl: String, password: String): GatewaySession {
+        val base = urlOrDefault(baseUrl).trimEnd('/')
+        val connection = URL("$base/api/login").openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 5_000
+            connection.readTimeout = 10_000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            connection.outputStream.use { it.write(JSONObject().put("password", password).toString().toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (code == 401) throw IllegalStateException("访问口令不对")
+            if (code == 429) throw IllegalStateException("尝试次数过多，请稍后再试")
+            if (code !in 200..299) throw IllegalStateException("登录失败 HTTP $code")
+            val body = JSONObject(text)
+            val token = body.optString("token")
+            val expiresAt = body.optLong("expiresAt")
+            if (token.isBlank() || expiresAt <= 0L) throw IllegalStateException("登录响应异常")
+            GatewaySession(token, expiresAt)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun upload(baseUrl: String, samples: List<PaymentSample>, token: String?): String {
         val array = JSONArray()
         for (sample in samples) {
             array.put(JSONObject().apply {
@@ -29,10 +58,10 @@ object SyncClient {
                 put("note", sample.note)
             })
         }
-        return request(baseUrl, "POST", array.toString())
+        return request(baseUrl, "POST", array.toString(), token)
     }
 
-    private fun request(baseUrl: String, method: String, body: String?): String {
+    private fun request(baseUrl: String, method: String, body: String?, token: String?): String {
         val base = urlOrDefault(baseUrl).trimEnd('/')
         val endpoint = URL(if (method == "GET") "$base/api/health" else "$base/api/samples")
         val connection = endpoint.openConnection() as HttpURLConnection
@@ -41,6 +70,7 @@ object SyncClient {
             connection.connectTimeout = 5_000
             connection.readTimeout = 10_000
             connection.setRequestProperty("Accept", "application/json")
+            if (!token.isNullOrBlank()) connection.setRequestProperty("Authorization", "Bearer ${token.trim()}")
             if (body != null) {
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -54,5 +84,20 @@ object SyncClient {
         } finally {
             connection.disconnect()
         }
+    }
+}
+
+object SyncSession {
+    private const val PREFS = "shunshou_probe"
+
+    fun token(context: Context, baseUrl: String, password: String): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val cached = prefs.getString("syncToken", null)
+        val expiresAt = prefs.getLong("syncTokenExpires", 0L)
+        if (!cached.isNullOrBlank() && expiresAt > System.currentTimeMillis() + 60_000) return cached
+        if (password.isBlank()) throw IllegalStateException("请先填访问口令")
+        val session = SyncClient.login(baseUrl, password)
+        prefs.edit().putString("syncToken", session.token).putLong("syncTokenExpires", session.expiresAt).apply()
+        return session.token
     }
 }

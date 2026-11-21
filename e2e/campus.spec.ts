@@ -18,7 +18,7 @@ test('asks the campus helper and surfaces demo data and warnings', async ({ page
   await expect(page.getByText('演示数据')).toBeVisible();
   await expect(page.getByText('hduhelp_cli_missing')).toBeVisible();
   await expect(page.getByRole('link', { name: '杭电助手课表' })).toHaveAttribute('href', 'https://example.com/timetable');
-  await expect(page.getByText(/只接受本机请求/)).toBeVisible();
+  await expect(page.getByText(/仍只监听本机/)).toBeVisible();
   await page.screenshot({ path: 'test-results/campus-stub.png', fullPage: true });
 });
 

@@ -1,3 +1,5 @@
+import { gatewayToken, gatewayUrl } from '../../data/gateway';
+
 export type HduSource = { title?: string; publisher?: string; url?: string; published_at?: string; is_demo?: boolean };
 export type HduAnswer = {
   requestId: string;
@@ -21,6 +23,14 @@ export class HduError extends Error {
 type Session = { password: string; csrf: string; expiresAt: number };
 let session: Session | null = null;
 
+function campusFetch(path: string, init: RequestInit): Promise<Response> {
+  const base = gatewayUrl();
+  const token = gatewayToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(`${base}${path}`, { ...init, headers, credentials: base ? 'include' : 'same-origin' });
+}
+
 export function resetHduSession(): void {
   session = null;
 }
@@ -37,8 +47,9 @@ const statusErrors: Record<number, [string, string]> = {
 async function failure(response: Response): Promise<HduError> {
   let detail = '';
   try {
-    const body = (await response.json()) as { detail?: string };
+    const body = (await response.json()) as { detail?: string; error?: string };
     detail = typeof body.detail === 'string' ? body.detail : '';
+    if (body.error === 'unauthorized') return new HduError('登录已过期，请到设置里重新连接你的电脑。', 'gateway_unauthorized');
   } catch { /* Non-JSON error bodies carry no extra information. */ }
   const mapped = statusErrors[response.status];
   if (mapped) return new HduError(mapped[0], mapped[1]);
@@ -46,11 +57,10 @@ async function failure(response: Response): Promise<HduError> {
 }
 
 async function login(password: string): Promise<Session> {
-  const response = await fetch('/web/api/login', {
+  const response = await campusFetch('/web/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password }),
-    credentials: 'same-origin',
   });
   if (!response.ok) throw await failure(response);
   const body = (await response.json()) as { csrf_token?: unknown; expires_at?: unknown };
@@ -82,11 +92,10 @@ function parseAnswer(raw: unknown): HduAnswer {
 }
 
 async function sendMessage(current: Session, text: string): Promise<Response> {
-  return fetch('/web/api/messages', {
+  return campusFetch('/web/api/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': current.csrf },
     body: JSON.stringify({ text, request_id: crypto.randomUUID() }),
-    credentials: 'same-origin',
   });
 }
 
@@ -108,6 +117,6 @@ export async function askHdu({ password, text, signal }: { password: string; tex
   } catch (reason) {
     if (reason instanceof HduError) throw reason;
     if (signal?.aborted || (reason instanceof DOMException && reason.name === 'AbortError')) throw new HduError('请求已取消或超时。', 'aborted');
-    throw new HduError('无法连接本机 HDU-Helper。请确认服务已启动，并且访问地址是 http://127.0.0.1:5173。', 'network');
+    throw new HduError('无法连接校园服务。本机使用时请确认 HDU-Helper 已启动；远程使用时请先在设置里连接你的电脑。', 'network');
   }
 }

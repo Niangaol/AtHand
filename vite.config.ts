@@ -15,8 +15,8 @@ const hduProxy = {
 
 export default defineConfig({
   plugins: [react()],
-  server: { host: '127.0.0.1', proxy: { '/web': hduProxy } },
-  preview: { proxy: { '/web': hduProxy } },
+  server: { host: '127.0.0.1', proxy: { '/web': hduProxy, '/api': 'http://127.0.0.1:18787' } },
+  preview: { proxy: { '/web': hduProxy, '/api': 'http://127.0.0.1:18787' } },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
