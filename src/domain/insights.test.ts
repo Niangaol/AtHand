@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPlannerState } from './planner.ts';
 import { buildEvent } from './schedule.ts';
-import { buildDayBrief } from './insights.ts';
+import { buildDayBrief, buildWeekReview } from './insights.ts';
 import type { RecordEntry } from './records.ts';
 
 const at = (time: string) => new Date(`${time}+08:00`).getTime();
@@ -29,5 +29,28 @@ describe('buildDayBrief', () => {
     const facts = buildDayBrief(createPlannerState(), [], [], '2026-11-23', at('2026-11-23T23:00'));
     expect(facts).toMatchObject({ date: '2026-11-23', items: [], next: null, expenseCents: 0, focusMinutes: 0, activeFocus: null });
     expect(facts.warnings).toEqual([]);
+  });
+});
+
+describe('buildWeekReview', () => {
+  it('compares this week with the previous week and ranks categories', () => {
+    const state = createPlannerState();
+    state.focusSessions.push({
+      id: 'f1', task: '复习', minutes: 50, startedAt: at('2026-11-23T19:00'), status: 'completed',
+      segments: [{ start: at('2026-11-23T19:00'), end: at('2026-11-23T19:50') }], owner: 'web', epoch: 1,
+    });
+    const records = [
+      record({ id: 'a', date: '2026-11-23', amountCents: 2000, category: '吃饭' }),
+      record({ id: 'b', date: '2026-11-24', amountCents: 1000, category: '交通' }),
+      record({ id: 'c', date: '2026-11-17', amountCents: 5000, category: '吃饭' }),
+    ];
+    const facts = buildWeekReview(state, records, [], '2026-11-23', at('2026-11-24T12:00'));
+    expect(facts).toMatchObject({ start: '2026-11-23', end: '2026-11-29' });
+    expect(facts.thisWeek.expenseCents).toBe(3000);
+    expect(facts.lastWeek.expenseCents).toBe(5000);
+    expect(facts.thisWeek.focusMinutes).toBe(50);
+    expect(facts.categories[0]).toMatchObject({ category: '吃饭', cents: 2000, share: 67 });
+    expect(facts.focusByDay).toHaveLength(7);
+    expect(facts.focusByDay[0]).toMatchObject({ date: '2026-11-23', minutes: 50 });
   });
 });

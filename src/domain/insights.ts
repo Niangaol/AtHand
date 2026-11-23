@@ -1,10 +1,11 @@
 import type { PlannerState } from './planner.ts';
 import type { RecordEntry } from './records.ts';
+import { expenseCategories } from './records.ts';
 import { buildTimeline, scheduleWarnings, type CalendarSource } from './schedule.ts';
 import { getCountdowns } from './countdowns.ts';
 import { focusedSecondsBetween, remainingSeconds, type FocusSession } from './focus.ts';
 import { summarize } from './summary.ts';
-import { shiftDate } from './dates.ts';
+import { getWeekRange, shiftDate } from './dates.ts';
 
 export type DayBrief = {
   date: string;
@@ -53,5 +54,62 @@ export function buildDayBrief(
     focusMinutes: Math.floor(focusedSecondsBetween(state.focusSessions, bounds.start, bounds.end, now) / 60),
     activeFocus: running ? { task: running.task, remainingMinutes: Math.ceil(remainingSeconds(running, now) / 60) } : null,
     warnings: scheduleWarnings(timeline).map((warning) => warning.text),
+  };
+}
+
+export type WeekReview = {
+  start: string;
+  end: string;
+  thisWeek: { expenseCents: number; incomeCents: number; netCents: number; workMinutes: number; focusMinutes: number; focusSessions: number };
+  lastWeek: { expenseCents: number; incomeCents: number; netCents: number; workMinutes: number; focusMinutes: number; focusSessions: number };
+  categories: { category: string; cents: number; share: number }[];
+  focusByDay: { date: string; minutes: number }[];
+  countdowns: { title: string; date: string; days: number }[];
+  warnings: string[];
+  topExpense: { title: string; amountCents: number; date: string } | null;
+};
+
+function weekBucket(state: PlannerState, records: readonly RecordEntry[], start: string, end: string, now: number) {
+  const summary = summarize(records, start, end);
+  const bounds = { start: new Date(`${start}T00:00:00`).getTime(), end: new Date(`${shiftDate(end, 1)}T00:00:00`).getTime() };
+  const sessions = state.focusSessions.filter((session) => session.status !== 'cancelled');
+  return {
+    expenseCents: summary.expenseCents, incomeCents: summary.incomeCents, netCents: summary.netCents, workMinutes: summary.workMinutes,
+    focusMinutes: Math.floor(focusedSecondsBetween(sessions, bounds.start, bounds.end, now) / 60),
+    focusSessions: sessions.filter((session) => session.startedAt >= bounds.start && session.startedAt < bounds.end).length,
+  };
+}
+
+export function buildWeekReview(
+  state: PlannerState, records: readonly RecordEntry[], calendars: CalendarSource[], anchor: string, now = Date.now(),
+): WeekReview {
+  const real = realRecords(records);
+  const { start, end } = getWeekRange(anchor);
+  const previous = getWeekRange(shiftDate(start, -7));
+  const timeline = buildTimeline(state, real, calendars, start, end, now);
+  const spend = real.filter((item) => item.type === 'expense' && item.date >= start && item.date <= end);
+  const total = spend.reduce((sum, item) => sum + item.amountCents, 0);
+  const byCategory = expenseCategories
+    .map((category) => {
+      const cents = spend.filter((item) => item.type === 'expense' && item.category === category).reduce((sum, item) => sum + item.amountCents, 0);
+      return { category, cents, share: total ? Math.round((cents / total) * 100) : 0 };
+    })
+    .filter((item) => item.cents > 0)
+    .sort((a, b) => b.cents - a.cents);
+  const top = [...spend].sort((a, b) => b.amountCents - a.amountCents)[0];
+  const sessions = state.focusSessions;
+  return {
+    start, end,
+    thisWeek: weekBucket(state, real, start, end, now),
+    lastWeek: weekBucket(state, real, previous.start, previous.end, now),
+    categories: byCategory,
+    focusByDay: Array.from({ length: 7 }, (_, index) => {
+      const date = shiftDate(start, index);
+      const bounds = dayBounds(date);
+      return { date, minutes: Math.floor(focusedSecondsBetween(sessions, bounds.start, bounds.end, now) / 60) };
+    }),
+    countdowns: getCountdowns(state, anchor, calendars).filter((item) => item.days >= 0 && item.days <= 7).slice(0, 5).map((item) => ({ title: item.title, date: item.date, days: item.days })),
+    warnings: [...new Set(scheduleWarnings(timeline).map((warning) => warning.text))],
+    topExpense: top ? { title: top.title, amountCents: top.amountCents, date: top.date } : null,
   };
 }
