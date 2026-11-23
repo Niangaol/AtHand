@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useRecords } from '../../data/RecordsProvider';
 import { downloadText, exportCsv } from '../../domain/csv';
 import { probeSamplesToRecords } from '../../domain/probeImport';
-import { clearGatewaySession, createPairingCode, defaultGatewayUrl, gatewayFetch, gatewayLogin, gatewayLogout, gatewayMe, gatewayUrl, gatewayUsername, isGatewayConnected } from '../../data/gateway';
+import { clearGatewaySession, createPairingCode, defaultGatewayUrl, gatewayFetch, gatewayLogin, gatewayLogout, gatewayMe, gatewayUrl, gatewayUsername, isCloudBackendUrl, isGatewayConnected } from '../../data/gateway';
 import type { GatewayPairingCode } from '../../data/gateway';
 import { choosePairingUrl, isLoopbackBase, pairingQrText } from '../../domain/pairing';
 import { createAgentToken, listAgentAudit, listAgentTokens, revokeAgentToken } from '../../data/agentTokens';
@@ -57,7 +57,7 @@ export function SettingsPage() {
   const [campusBusy, setCampusBusy] = useState(false);
   const [campusMessage, setCampusMessage] = useState('');
   const hasExamples = records.some((record) => record.source === 'demo') || workplaces.some((unit) => unit.source === 'demo');
-  const cloudMode = /\/functions\/v1\/app$/.test(gatewayAddress.trim());
+  const cloudMode = isCloudBackendUrl(gatewayAddress.trim());
 
   useEffect(() => {
     if (!connected || !cloudMode) return;
@@ -359,7 +359,7 @@ export function SettingsPage() {
     <section className="panel settings-panel"><h2>记录偏好</h2>
       <div className="setting-row"><Hourglass size={22} /><div><h3>消费换算时薪</h3><p>记满三个不同日期后，支出旁会显示估算工时。仅作参考，不改变账目。</p><form className="rate-form" noValidate onSubmit={async (event) => { event.preventDefault(); const result = await updateRate(rate); setNotice(result.ok ? '换算时薪已保存。' : result.message); }}><label>换算时薪（元/小时）<input inputMode="decimal" value={rate} onChange={(event) => setRate(event.target.value)} disabled={blocked} /></label><button className="button secondary compact" disabled={blocked}>保存时薪</button></form></div></div>
       <div className="setting-row"><Download size={22} /><div><h3>导出个人数据</h3><p>导出全部记录为 CSV，Excel 可直接打开；示例通过出处列标注。CSV 暂不支持导入恢复。</p></div><div className="setting-actions"><button className="button secondary compact" disabled={blocked} onClick={() => { downloadText(exportCsv(records, workplaces), `顺手账单-${today}.csv`, 'text/csv;charset=utf-8'); setNotice('已发起 CSV 下载，请在浏览器下载列表查看。'); }}>导出 CSV</button></div></div>
-      <div className="setting-row"><Database size={22} /><div><h3>本地数据</h3><p>本浏览器保留一份缓存；连接电脑后以电脑上的账本为准。清理浏览器数据会丢失缓存，请定期导出。</p></div><div className="setting-actions"><button className="button secondary compact" disabled={!hasExamples || blocked} onClick={() => setConfirm('examples')}>清空示例数据</button></div></div>
+      <div className="setting-row"><Database size={22} /><div><h3>本地数据</h3><p>{cloudMode && connected ? '本浏览器保留一份缓存；登录云端账号后以云端账本为准。清理浏览器数据会丢失缓存，请定期导出。' : '本浏览器保留一份缓存；连接电脑后以电脑上的账本为准。清理浏览器数据会丢失缓存，请定期导出。'}</p></div><div className="setting-actions"><button className="button secondary compact" disabled={!hasExamples || blocked} onClick={() => setConfirm('examples')}>清空示例数据</button></div></div>
       <div className="setting-row"><LockKeyhole size={22} /><div><h3>备份与重置</h3><p>原始 JSON 可保留完整账本或排查损坏数据；当前不提供自动导入。重置将永久删除此浏览器中的记录和单位。</p></div><div className="setting-actions"><button className="button secondary compact" disabled={rawData === null} onClick={() => { if (rawData !== null) { downloadText(rawData, `顺手原始备份-${today}.json`, 'application/json;charset=utf-8'); setNotice('已发起原始备份下载，请确认文件已保存。'); } }}>下载原始备份</button><button className="button secondary compact danger-text" onClick={() => setConfirm('reset')}>重置账本</button></div></div>
     </section>
     <section className="panel settings-panel">
@@ -388,7 +388,7 @@ export function SettingsPage() {
           <label>服务地址<input value={gatewayAddress} onChange={(event) => setGatewayAddress(event.target.value)} placeholder="https://xxxx.trycloudflare.com 或 http://127.0.0.1:18787" /></label>
           <label>访问口令<input type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="本机首次启动时打印的口令" /></label>
           <button type="button" className="button secondary compact" onClick={testService}>测试服务</button>
-          <button type="button" className="button secondary compact" disabled={connecting || password.length < 8}>{connecting ? '正在连接' : '连接'}</button>
+          <button className="button secondary compact" disabled={connecting || password.length < 8}>{connecting ? '正在连接' : '连接'}</button>
           <p className="form-hint">本机网关使用启动时打印的访问口令。</p>
         </form>}
         {connectionStatus ? <p className="form-hint" role="status">{connectionStatus}</p> : null}
@@ -396,25 +396,29 @@ export function SettingsPage() {
       {connected && cloudMode ? <div className="account-panel-wrap">
         <AccountPanel onLoggedOut={() => { clearGatewaySession(); setConnected(false); setAccount(''); setConnectionStatus('已退出登录，请重新登录。'); }} />
       </div> : null}
-      <div className="setting-row"><Smartphone size={22} /><div><h3>手机采集</h3><p>让手机 App 扫码配对，样本会自动传到这里并导入；只导入已确认的支出，收入和待确认会跳过。也可以继续用地址和口令手动同步。</p>
-        <div className="setting-actions">
-          <button type="button" className="button secondary compact" disabled={pairingBusy || blocked || !connected} onClick={startPairing}>{pairingBusy ? '正在生成' : '手机扫码配对'}</button>
-          <button type="button" className="button secondary compact" disabled={syncing || blocked || !connected} onClick={pullSamples}>{syncing ? '正在导入' : '拉取并导入'}</button>
-        </div>
-        {pairing ? <div className="pairing-box">
-          <canvas ref={pairingCanvasRef} className="pairing-qr" aria-label="手机配对二维码" />
-          <div className="pairing-meta">
-            <p>手机打开「顺手采集」→ 连接设置 → 扫码配对，扫完会自动上传现有样本。</p>
-            {pairing.urls.length > 1 ? <label>手机能访问的地址<select value={pairing.url} onChange={(event) => setPairing({ ...pairing, url: event.target.value })}>{pairing.urls.map((item) => <option key={item.url} value={item.url}>{item.label} · {item.url}</option>)}</select></label> : null}
-            <p className="form-hint">目标地址：{pairing.url}<br />有效期至 {new Date(pairing.expiresAt).toLocaleTimeString('zh-CN')}，过期后请刷新二维码。</p>
-            <div className="setting-actions">
-              <button type="button" className="button secondary compact" disabled={pairingBusy} onClick={startPairing}>刷新二维码</button>
-              <button type="button" className="button secondary compact" onClick={() => { setPairing(null); setPairingStatus(''); }}>收起</button>
-            </div>
-            {pairingStatus ? <p className="form-hint" role="status">{pairingStatus}</p> : null}
+      <div className="setting-row"><Smartphone size={22} /><div><h3>手机采集</h3>{cloudMode
+        ? <p>扫码配对只在电脑上的本机网关可用，云端账号不支持。手机 App 用同一个账号登录后，账本和日程直接走云端，不需要配对。</p>
+        : <p>让手机 App 扫码配对，样本会自动传到这里并导入；只导入已确认的支出，收入和待确认会跳过。也可以继续用地址和口令手动同步。</p>}
+        {cloudMode ? null : <>
+          <div className="setting-actions">
+            <button type="button" className="button secondary compact" disabled={pairingBusy || blocked || !connected} onClick={startPairing}>{pairingBusy ? '正在生成' : '手机扫码配对'}</button>
+            <button type="button" className="button secondary compact" disabled={syncing || blocked || !connected} onClick={pullSamples}>{syncing ? '正在导入' : '拉取并导入'}</button>
           </div>
-        </div> : pairingStatus ? <p className="form-hint" role="status">{pairingStatus}</p> : null}
-        {syncStatus ? <p className="form-hint" role="status">{syncStatus}</p> : null}
+          {pairing ? <div className="pairing-box">
+            <canvas ref={pairingCanvasRef} className="pairing-qr" aria-label="手机配对二维码" />
+            <div className="pairing-meta">
+              <p>手机打开「顺手采集」→ 连接设置 → 扫码配对，扫完会自动上传现有样本。</p>
+              {pairing.urls.length > 1 ? <label>手机能访问的地址<select value={pairing.url} onChange={(event) => setPairing({ ...pairing, url: event.target.value })}>{pairing.urls.map((item) => <option key={item.url} value={item.url}>{item.label} · {item.url}</option>)}</select></label> : null}
+              <p className="form-hint">目标地址：{pairing.url}<br />有效期至 {new Date(pairing.expiresAt).toLocaleTimeString('zh-CN')}，过期后请刷新二维码。</p>
+              <div className="setting-actions">
+                <button type="button" className="button secondary compact" disabled={pairingBusy} onClick={startPairing}>刷新二维码</button>
+                <button type="button" className="button secondary compact" onClick={() => { setPairing(null); setPairingStatus(''); }}>收起</button>
+              </div>
+              {pairingStatus ? <p className="form-hint" role="status">{pairingStatus}</p> : null}
+            </div>
+          </div> : pairingStatus ? <p className="form-hint" role="status">{pairingStatus}</p> : null}
+          {syncStatus ? <p className="form-hint" role="status">{syncStatus}</p> : null}
+        </>}
       </div></div>
     </section>
     <section className="panel settings-panel" aria-labelledby="mcp-settings-title">
@@ -442,7 +446,8 @@ export function SettingsPage() {
     <section className="panel settings-panel" aria-labelledby="assistant-settings-title">
       <h2 id="assistant-settings-title"><Sparkles size={20} /> AI 助手</h2>
       <p className="settings-lead">助手页用这里的模型理解你的话，并调用顺手里的工具。API Key 只保存在电脑，不会回传到浏览器；留空表示继续使用已保存的 Key。</p>
-      {!connected ? <p className="form-hint">先连接电脑，再配置模型。</p> : <>
+      {cloudMode ? <p className="form-hint">云端后端不运行内置助手，下面是本机网关的做法：在电脑上执行 <code>npm run sync</code>，把服务地址改成本机网关（<code>http://127.0.0.1:18787</code>）并登录，再回到设置页配置模型和 Agent 令牌。云端账号的账本、日程和专注不受影响。</p>
+      : !connected ? <p className="form-hint">先连接电脑，再配置模型。</p> : <>
         <form className="agent-token-form assistant-settings-form" onSubmit={saveAssistant}>
           <label>模型地址<input value={assistantBaseUrl} onChange={(event) => setAssistantBaseUrl(event.target.value)} placeholder="http://127.0.0.1:11434/v1" disabled={assistantBusy} /></label>
           <label>模型名称<input value={assistantModel} onChange={(event) => setAssistantModel(event.target.value)} placeholder="例如 ling-3.0-tiny:32k" maxLength={200} disabled={assistantBusy} /></label>
@@ -461,8 +466,9 @@ export function SettingsPage() {
     </section>
     <section className="panel settings-panel" aria-labelledby="agent-api-title">
       <h2 id="agent-api-title"><Bot size={20} /> Agent 接口</h2>
-      <p className="settings-lead">给以后接入的助手一把可撤销的钥匙：通过电脑上的接口查看安排、账本摘要和校园服务，也可以新建或修改日程、开始专注、加倒计时。删除日程不开放给助手，删除仍在页面里做；助手也不会替你记账、付款、提交申请或签字。</p>
-      {!connected ? <p className="form-hint">先在下面连接电脑，再生成 Agent 令牌。</p> : <>
+      <p className="settings-lead">给以后接入的助手一把可撤销的钥匙：通过电脑上的接口查看安排、账本摘要和校园服务，也可以新建或修改日程、开始专注、加倒计时、记支出和工时。删除不开放给助手，删除仍在页面里做；助手也不会替你付款、提交申请或签字。</p>
+      {cloudMode ? <p className="form-hint">Agent 令牌只在电脑上的本机网关可用，云端后端不提供这个接口。</p>
+      : !connected ? <p className="form-hint">先在下面连接电脑，再生成 Agent 令牌。</p> : <>
         <form className="agent-token-form" onSubmit={createAgent}>
           <label>令牌名称<input value={agentName} onChange={(event) => setAgentName(event.target.value)} maxLength={40} required disabled={agentBusy} /></label>
           <label>权限<select value={agentScope} onChange={(event) => setAgentScope(event.target.value as AgentToken['scope'])} disabled={agentBusy}><option value="read">只读：查看安排和摘要</option><option value="write">可写：还能新建日程和开始专注</option></select></label>
@@ -487,7 +493,9 @@ export function SettingsPage() {
       </>}
       <p className="form-hint">接口说明在 <code>docs/agent-api.md</code>；令牌默认 365 天后过期，也可以随时吊销。</p>
     </section>
-    <section className="privacy-note"><LockKeyhole size={21} /><div><h3>数据留在你自己的电脑上。</h3><p>账本和采集样本只存在你的电脑；网页通过加密连接读取，登录令牌 7 天有效。Agent 令牌可以随时吊销，只读令牌不能修改任何内容。页面已打开时，断网也能记账和保存，联网后自动补传。顺手不会替你付款、提交申请或签字。</p></div></section>
+    <section className="privacy-note"><LockKeyhole size={21} /><div>{cloudMode && connected
+      ? <><h3>数据存在云端账号里。</h3><p>账本、生活记录和校园授权都保存在云端数据库，按账号隔离；其他账号看不到你的数据。登录令牌 7 天有效，密码用加盐哈希保存。页面已打开时断网也能继续记账，联网后自动补传。顺手不会替你付款、提交申请或签字。</p></>
+      : <><h3>数据留在你自己的电脑上。</h3><p>账本和采集样本只存在你的电脑；网页通过加密连接读取，登录令牌 7 天有效。Agent 令牌可以随时吊销，只读令牌不能修改任何内容。页面已打开时，断网也能记账和保存，联网后自动补传。顺手不会替你付款、提交申请或签字。</p></>}</div></section>
     <div className="version-note"><Sprout size={22} /><strong>顺手</strong><span>校园个人助手</span><span>v0.6 AI 工作台与全功能工具</span></div>
     {agentToRevoke ? <ConfirmDialog title="吊销这个 Agent 令牌？" description={`「${agentToRevoke.name}」将立即失去访问权限；它已经写过的日程、专注和倒计时不会删除。`} confirmLabel="确认吊销" onCancel={() => setAgentToRevoke(null)} onConfirm={async () => { const target = agentToRevoke; setAgentToRevoke(null); await revokeAgent(target); }} /> : null}
     {confirm ? <ConfirmDialog title={confirm === 'examples' ? '清空示例数据？' : '永久重置这份账本？'} description={confirm === 'examples' ? '只删除示例记录和未使用的示例单位，不影响你的真实记录。' : '此浏览器的全部记录、单位和时薪设置都会被清空。请先确认备份已下载；此操作不能撤销。'} confirmLabel={confirm === 'examples' ? '确认清空示例' : '确认重置全部数据'} onCancel={() => setConfirm(null)} onConfirm={async () => { const result = await (confirm === 'examples' ? clearExamples() : resetLedger()); if (result.ok && confirm === 'reset') setRate('20.00'); setNotice(result.ok ? (confirm === 'examples' ? '示例数据已清空。' : '账本已重置，可以重新开始记录。') : result.message); setConfirm(null); }} /> : null}

@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { ArrowUpRight, MessageSquare, Sprout } from 'lucide-react';
 import { assistantNav, navigation, navigationGroups } from './navigation';
 import { useRecords } from '../data/RecordsProvider';
-import { gatewayUsername, isGatewayConnected } from '../data/gateway';
+import { backendMode, gatewayUsername, isGatewayConnected } from '../data/gateway';
 
 /** 窄屏底部 Tab 只展示高频四项（与 App 的首页/账本/日程/我的对齐），其余页面从首页与设置页进入。 */
 const mobilePrimaryPaths = new Set(['/', '/ledger', '/schedule', '/settings']);
@@ -21,6 +21,12 @@ export function Shell() {
     return () => window.removeEventListener('shunshou-gateway-change', sync);
   }, []);
   const hasExamples = records.some((record) => record.source === 'demo');
+  const mode = backendMode();
+  const ledgerBadge = hasExamples ? '示例模式'
+    : !signedIn ? '本机账本'
+      : mode === 'cloud' ? '云端账号' : '本机网关';
+  const footerSync = hasExamples ? '当前账单为示例'
+    : mode === 'cloud' ? '账本同步到云端账号' : '账本存本机，可连电脑同步';
   const pageName = location.pathname.startsWith('/entry/') ? '编辑记录' : navigation.find((item) => item.path === location.pathname || item.path !== '/' && location.pathname.startsWith(`${item.path}/`))?.label ?? '页面未找到';
   const mainRef = useRef<HTMLElement>(null);
   const previousPath = useRef(location.pathname);
@@ -58,12 +64,12 @@ export function Shell() {
         : <Link className="profile" to="/login"><span className="avatar">登</span><span>还没有登录<small>登录或注册</small></span></Link>}</div>
     </aside>
     <div className="workspace">
-      <header className="topbar"><span>我的校园生活 <span className="topbar-divider">/</span> <strong>{pageName}</strong></span><div className="topbar-actions"><Link className="command-trigger" to="/assistant" aria-label="问助手"><MessageSquare size={15} strokeWidth={1.7} /><span className="command-copy"><strong>问助手</strong><span>查安排、记账、开专注</span></span><kbd>Ctrl K</kbd></Link><span className="demo-badge"><span />{hasExamples ? '示例模式' : '本机账本'}</span></div></header>
+      <header className="topbar"><span>我的校园生活 <span className="topbar-divider">/</span> <strong>{pageName}</strong></span><div className="topbar-actions"><Link className="command-trigger" to="/assistant" aria-label="问助手"><MessageSquare size={15} strokeWidth={1.7} /><span className="command-copy"><strong>问助手</strong><span>查安排、记账、开专注</span></span><kbd>Ctrl K</kbd></Link><span className="demo-badge"><span />{ledgerBadge}</span></div></header>
       <main id="main-content" className="main-content" tabIndex={-1} ref={mainRef}>
         {error ? <div className="storage-warning" role="alert">{error}{blocked ? <Link to="/settings">前往数据设置</Link> : null}</div> : null}
         <Outlet />
       </main>
-      <footer className="app-footer"><span>顺手，让生活少一点零散。</span><span>v0.6 · {hasExamples ? '当前账单为示例' : '账本存本机，可连电脑同步'}</span></footer>
+      <footer className="app-footer"><span>顺手，让生活少一点零散。</span><span>v0.6 · {footerSync}</span></footer>
     </div>
   </div>;
 }

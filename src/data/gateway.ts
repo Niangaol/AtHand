@@ -64,6 +64,26 @@ export function defaultGatewayUrl(): string {
   return `${window.location.origin}/functions/v1/app`;
 }
 
+/** 地址是否指向 Qoder Sites 云端函数（/functions/v1/app）。 */
+export function isCloudBackendUrl(raw: string): boolean {
+  return /\/functions\/v1\/app\/?$/.test(raw.trim());
+}
+
+export type BackendMode = 'off' | 'cloud' | 'local';
+
+/** 已连接按网关地址判定；未连接时托管站点按云端口径、本机开发按电脑口径。 */
+export function backendMode(): BackendMode {
+  const url = gatewayUrl();
+  if (isGatewayConnected()) return isCloudBackendUrl(url) ? 'cloud' : 'local';
+  if (url) return isCloudBackendUrl(url) ? 'cloud' : 'local';
+  return isHostedSite() ? 'cloud' : 'local';
+}
+
+/** 云端叫「云端」，本机网关叫「电脑」，用于拼装提示文案。 */
+export function backendNoun(): '云端' | '电脑' {
+  return backendMode() === 'cloud' ? '云端' : '电脑';
+}
+
 export function gatewayToken(): string {
   const token = read(TOKEN_KEY);
   const expiresAt = Number(read(EXPIRES_KEY));

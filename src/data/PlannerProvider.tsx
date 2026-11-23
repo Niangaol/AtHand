@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { guardedSave, readGuardedRaw } from './guardedSave';
 import { applyCommand, commandKey, plannerSchema } from '../domain/planner';
 import type { Entity, PlannerCommand, PlannerState } from '../domain/planner';
-import { gatewayUrl, isGatewayConnected } from './gateway';
+import { backendNoun, gatewayUrl, isGatewayConnected } from './gateway';
 import { emptyEnvelope, enqueue, envelopeSchema, loadPlanner, PLANNER_KEY, projectedState, savePlanner } from './plannerStorage';
 import type { PlannerEnvelope, PlannerStorage } from './plannerStorage';
 import { createGatewayPlannerTransport, syncPlanner } from './plannerSync';
@@ -27,7 +27,7 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
   const [owner] = useState(() => crypto.randomUUID());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('仅本机；尚未连接电脑');
+  const [status, setStatus] = useState(() => `仅本机；尚未连接${backendNoun()}`);
   const working = useRef(false);
   const syncRef = useRef<() => Promise<Result>>(async () => ({ ok: true }));
   const reload = useCallback(() => setSnapshot(loadPlanner(storage)), [storage]);
@@ -64,7 +64,7 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
 
   const sync = useCallback(() => run(async (envelope, persist) => {
     if (!isGatewayConnected()) {
-      setStatus(envelope.serverId ? '未登录；本机改动待同步' : '仅本机；尚未连接电脑');
+      setStatus(envelope.serverId ? '未登录；本机改动待同步' : `仅本机；尚未连接${backendNoun()}`);
       return;
     }
     setStatus('正在同步生活记录…');
@@ -98,7 +98,7 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
     }
     let envelope = initial;
     if (isControl) {
-      if (!isGatewayConnected() || !navigator.onLine) throw new Error('连接电脑后才能控制同步中的专注；当前计时仍会继续。');
+      if (!isGatewayConnected() || !navigator.onLine) throw new Error(`连接${backendNoun()}后才能控制同步中的专注；当前计时仍会继续。`);
       envelope = await syncPlanner(envelope, gatewayUrl(), createGatewayPlannerTransport(), persist);
       applyCommand(projectedState(envelope), command, Date.now());
     }
@@ -107,7 +107,7 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
     setStatus('已保存在本机，等待同步');
     if (isControl) {
       await syncPlanner(envelope, gatewayUrl(), createGatewayPlannerTransport(), persist);
-      setStatus('专注操作已由电脑确认');
+      setStatus(`专注操作已由${backendNoun()}确认`);
     } else if (isGatewayConnected()) {
       try {
         await syncPlanner(envelope, gatewayUrl(), createGatewayPlannerTransport(), persist);
@@ -119,10 +119,10 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
   }), [run]);
 
   const resolve = useCallback((choice: 'local' | 'remote') => run(async (initial, persist) => {
-    if (!isGatewayConnected()) throw new Error('请先连接电脑。');
+    if (!isGatewayConnected()) throw new Error('请先连接后端。');
     if (!initial.pending.length) return;
     const doc = await createGatewayPlannerTransport().read();
-    if (initial.serverId !== doc.serverId || initial.serverUrl !== gatewayUrl()) throw new Error('服务器已更换，请先导出备份，不能覆盖另一台电脑。');
+    if (initial.serverId !== doc.serverId || initial.serverUrl !== gatewayUrl()) throw new Error('服务器已更换，请先导出备份，不能覆盖另一台设备。');
     const [first, ...rest] = initial.pending;
     const key = commandKey(first.command);
     const version = doc.entityVersions[key] ?? 0;
@@ -154,7 +154,7 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
 
   const restore = useCallback((state: PlannerState) => run(async (initial, persist) => {
     const parsed = plannerSchema.parse(state);
-    if (initial.serverId || isGatewayConnected()) throw new Error('同步中的记录不能整份覆盖。请保留备份，在未绑定电脑的浏览器恢复。');
+    if (initial.serverId || isGatewayConnected()) throw new Error('同步中的记录不能整份覆盖。请保留备份，在未绑定后端的浏览器恢复。');
     if (parsed.focusSessions.some((s) => s.status === 'running' || s.status === 'paused')) throw new Error('备份含进行中的专注，请先结束计时再导出。');
     let next = emptyEnvelope();
     for (const value of parsed.events) {

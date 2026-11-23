@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { gatewayUrl } from '../data/gateway';
+import { backendNoun, gatewayUrl } from '../data/gateway';
 import { usePlanner } from '../data/PlannerProvider';
 import { downloadText } from '../domain/csv';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -20,10 +20,10 @@ export function PlannerStatus() {
       <div className="planner-actions"><button className="button secondary compact" disabled={planner.busy || planner.blocked} onClick={() => void planner.sync()}><RefreshCw size={15} />同步生活记录</button>
         <button className="button secondary compact" onClick={() => downloadText(planner.raw ?? JSON.stringify(planner.state), '顺手生活记录备份.json', 'application/json')}>备份生活记录</button>
         {planner.serverBound ? <button className="button secondary compact" disabled={planner.busy || planner.blocked} onClick={() => setServerChoice(gatewayUrl())}>切换生活记录来源</button> : null}
-        {(planner.error.includes('冲突') || planner.status.includes('冲突')) ? <><button className="button secondary compact" onClick={() => setChoice('local')}>保留这项本机修改</button><button className="button secondary compact" onClick={() => setChoice('remote')}>采用这项电脑修改</button></> : null}
+        {(planner.error.includes('冲突') || planner.status.includes('冲突')) ? <><button className="button secondary compact" onClick={() => setChoice('local')}>保留这项本机修改</button><button className="button secondary compact" onClick={() => setChoice('remote')}>采用这项{backendNoun()}修改</button></> : null}
       </div>
     </section>
-    <details className="planner-backup"><summary>从备份恢复生活记录</summary><p className="form-hint">不会修改账本。恢复前自动保留当前生活记录；绑定电脑后不支持整份覆盖。</p><label>导入生活记录备份<input type="file" accept=".json,application/json" disabled={planner.busy || planner.serverBound} onChange={async (event) => {
+    <details className="planner-backup"><summary>从备份恢复生活记录</summary><p className="form-hint">不会修改账本。恢复前自动保留当前生活记录；绑定{backendNoun()}后不支持整份覆盖。</p><label>导入生活记录备份<input type="file" accept=".json,application/json" disabled={planner.busy || planner.serverBound} onChange={async (event) => {
       const file = event.target.files?.[0];
       event.target.value = '';
       if (!file) return;

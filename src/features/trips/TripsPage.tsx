@@ -7,6 +7,7 @@ import { tripBudgetCents, tripCountdown } from '../../domain/tripPlan';
 import { money } from '../../domain/summary';
 import { PageHeading } from '../../components/PageHeading';
 import { PlannerStatus } from '../../components/PlannerStatus';
+import { backendMode } from '../../data/gateway';
 import { CityMap } from './CityMap';
 import { TripEditor } from './TripEditor';
 import './trips.css';
@@ -24,7 +25,7 @@ export function TripsPage() {
       const budget = tripBudgetCents(trip);
       return <article className="panel planner-panel" key={trip.id}><span className="subtle-tag">{trip.startDate > today ? '计划出发' : trip.endDate < today ? '旅行回忆' : '旅途中'}</span><h2><Link to={`/trips/${encodeURIComponent(trip.id)}`}>{trip.title}</Link></h2><p>{trip.startDate} — {trip.endDate}</p><p>{tripCountdown(trip, today)}{budget ? ` · 预算 ¥ ${money(budget)}` : ''}</p><p>{trip.days.reduce((n, day) => n + day.items.length, 0)} 条攻略 · 行李 {trip.packing.filter((v) => v.checked).length}/{trip.packing.length}</p></article>;
     })}</div>
-    {!state.trips.length ? <div className="panel planner-empty planner-spaced"><h2>下一站，想去哪里？</h2><p>新建一趟旅行，从日期和一条攻略开始。所有内容先保存在本机。</p></div> : null}
+    {!state.trips.length ? <div className="panel planner-empty planner-spaced"><h2>下一站，想去哪里？</h2><p>新建一趟旅行，从日期和一条攻略开始。所有内容{backendMode() === 'cloud' ? '会同步到云端账号。' : '先保存在本机。'}</p></div> : null}
     <CityMap cities={cityVisits(state.trips, today)} />
   </>;
 }

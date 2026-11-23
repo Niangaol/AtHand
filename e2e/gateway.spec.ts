@@ -11,10 +11,10 @@ test.describe('电脑作服务器的登录与同步', () => {
 
   test('登录、跨设备读取账本并导入手机样本', async ({ page, browser }) => {
     await page.goto('/settings');
-    await page.getByLabel('电脑地址').fill(gateway);
+    await page.getByLabel('服务地址').fill(gateway);
     await page.getByLabel('访问口令').fill(password);
     await page.getByRole('button', { name: '连接', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '已连接电脑' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /已登录|登录账号或连接网关/ })).toBeVisible();
     await expect(page.getByText(/已同步|上传到电脑|已读取电脑/)).toBeVisible();
 
     await page.goto('/entry');
@@ -26,17 +26,17 @@ test.describe('电脑作服务器的登录与同步', () => {
     expect((await pushed).ok()).toBe(true);
 
     await page.goto('/settings');
-    await expect(page.getByText(/已与电脑一致|已同步到电脑/)).toBeVisible();
+    await expect(page.getByText(/已与电脑一致|已同步到电脑|已同步到后端/)).toBeVisible();
     await page.reload();
     await expect(page.getByText(/已与电脑一致/)).toBeVisible();
 
     const other = await browser.newContext();
     const otherPage = await other.newPage();
     await otherPage.goto('/settings');
-    await otherPage.getByLabel('电脑地址').fill(gateway);
+    await otherPage.getByLabel('服务地址').fill(gateway);
     await otherPage.getByLabel('访问口令').fill(password);
     await otherPage.getByRole('button', { name: '连接', exact: true }).click();
-    await expect(otherPage.getByRole('heading', { name: '已连接电脑' })).toBeVisible();
+    await expect(otherPage.getByRole('heading', { name: /已登录|登录账号或连接网关/ })).toBeVisible();
     await expect(otherPage.getByText(/已读取电脑上的账本|已与电脑一致/)).toBeVisible();
     await otherPage.goto('/ledger');
     await expect(otherPage.getByText('网关同步测试', { exact: true })).toBeVisible();

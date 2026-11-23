@@ -73,7 +73,7 @@ export function FocusPage() {
     <PlannerStatus />
     <div className="focus-layout">
       <section className="panel focus-panel" aria-label="专注计时">
-        <div className="focus-label"><Timer size={18} />{serverBound ? '由电脑确认的专注' : '仅本机计时'}</div>
+        <div className="focus-label"><Timer size={18} />{serverBound ? '已同步的专注' : '仅本机计时'}</div>
         <h2>{active?.task || '留一段时间给自己'}</h2>
         <div className="focus-clock" role="timer" aria-label="剩余时间" aria-live="off">{String(Math.floor(remaining / 60)).padStart(2, '0')}:{String(remaining % 60).padStart(2, '0')}</div>
         {active ? <>

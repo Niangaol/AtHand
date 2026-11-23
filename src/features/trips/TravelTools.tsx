@@ -105,7 +105,7 @@ export function TravelTools({ legs, city, today }: TravelToolsProps) {
   if (!connected || cloud) {
     return <section className="panel travel-tools" aria-label="旅程工具">
       <h2><Compass size={19} /> 旅程工具</h2>
-      <p className="form-hint">{cloud ? '当前连的是云端后端，高德和飞常准跑在电脑上的本机网关里。' : '还没有连接本机网关。'} 先到 <Link className="text-link" to="/settings">设置页</Link> 连接本机网关，再去 <Link className="text-link" to="/services">生活服务</Link> 填高德/飞常准的 Key。</p>
+      <p className="form-hint">{cloud ? '当前连的是云端后端，高德和飞常准跑在电脑上的本机网关里。' : '还没有连接后端。'} 先到 <Link className="text-link" to="/settings">设置页</Link> 连接本机网关，再去 <Link className="text-link" to="/services">生活服务</Link> 填高德/飞常准的 Key。</p>
     </section>;
   }
 

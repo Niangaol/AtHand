@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { BriefcaseBusiness, Info, Wallet } from 'lucide-react';
 import { PageHeading } from '../../components/PageHeading';
+import { backendMode } from '../../data/gateway';
 import { useRecords } from '../../data/RecordsProvider';
 import { buildRecord } from '../../domain/ledger';
 import type { RecordDraft } from '../../domain/ledger';
@@ -41,9 +42,13 @@ function EntryForm({ record }: { record?: RecordEntry }) {
   let preview: RecordEntry | null = null;
   try { preview = buildRecord(draft, workplaces, record?.id ?? 'preview'); } catch { /* Incomplete inputs have no preview. */ }
   const hasExamples = records.some((item) => item.source === 'demo');
+  const cloudMode = backendMode() === 'cloud';
+  const savedNotice = record
+    ? (cloudMode ? '记录已更新，同步到云端账号。' : '记录已更新，并保存在本机。')
+    : (cloudMode ? '记录已保存，同步到云端账号。' : '记录已保存到本机。');
 
   return <>
-    <PageHeading title={record ? '把这一笔，重新理一理。' : '一笔小事，顺手记下。'} description="数据只保存在当前浏览器。记完后，今天、周账单和月报会一起更新。" action={record ? <Link className="button secondary" to="/ledger">取消编辑</Link> : undefined} />
+    <PageHeading title={record ? '把这一笔，重新理一理。' : '一笔小事，顺手记下。'} description={cloudMode ? '保存后同步到云端账号。记完后，今天、周账单和月报会一起更新。' : '数据只保存在当前浏览器。记完后，今天、周账单和月报会一起更新。'} action={record ? <Link className="button secondary" to="/ledger">取消编辑</Link> : undefined} />
     <div className="entry-layout"><section className="panel entry-panel">
       <div className="entry-tabs" role="tablist" aria-label="记账类型" onKeyDown={(event) => {
         if (record || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -57,7 +62,7 @@ function EntryForm({ record }: { record?: RecordEntry }) {
       </div>
       <div role="tabpanel" id="entry-form" aria-labelledby={`${draft.type}-tab`} className="entry-preview" tabIndex={0}>
         {hasExamples ? <div className="inline-notice"><Info size={17} /><span>保存后将移除示例账单，只保留你的真实记录；兼职单位仍可继续使用。</span></div> : null}
-        <form noValidate onSubmit={async (event) => { event.preventDefault(); const result = await saveRecord(draft, record?.id); if (result.ok) navigate(`/ledger?date=${draft.date}`, { state: { notice: record ? '记录已更新，并保存在本机。' : '记录已保存到本机。' } }); else setError(result.message); }}>
+        <form noValidate onSubmit={async (event) => { event.preventDefault(); const result = await saveRecord(draft, record?.id); if (result.ok) navigate(`/ledger?date=${draft.date}`, { state: { notice: savedNotice } }); else setError(result.message); }}>
           <div className="form-fields">
             {draft.type === 'work' ? <label>兼职单位<select value={draft.workplaceId} onChange={(event) => { const unit = workplaces.find((item) => item.id === event.target.value); setDraft((previous) => ({ ...previous, workplaceId: event.target.value, hourlyRate: ((unit?.hourlyRateCents ?? settings.hourlyRateCents) / 100).toFixed(2) })); }}><option value="" disabled>选择兼职单位</option>{workplaces.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label> : <label>支出金额（元）<input inputMode="decimal" value={draft.amount} onChange={(event) => update('amount', event.target.value)} placeholder="例如 18.50" autoComplete="off" /></label>}
             {draft.type === 'work' && workplaces.length === 0 ? <p className="form-hint">还没有单位。<Link className="text-link" to="/workplaces">先添加一个兼职单位</Link>，也可以切换到记支出。</p> : null}
@@ -75,6 +80,6 @@ function EntryForm({ record }: { record?: RecordEntry }) {
           <button className="button primary full-width" disabled={saving || blocked || (draft.type === 'work' && workplaces.length === 0)}>{record ? '保存修改' : '保存记录'}</button>
         </form>
       </div>
-    </section><aside className="entry-aside"><BriefcaseBusiness size={28} strokeWidth={1.3} /><h2>尽量简单，<br />才能一直记下去。</h2><p>工时只需要告诉顺手：在哪、几点到几点、多少钱一小时。</p><div className="aside-divider" /><h3>记完以后</h3><ul><li>收入和支出自动汇总</li><li>点账单上的编辑可随时修改</li><li>刷新页面后记录仍然保留</li></ul><span className="subtle-tag">本机保存，不会上传到云端</span></aside></div>
+    </section><aside className="entry-aside"><BriefcaseBusiness size={28} strokeWidth={1.3} /><h2>尽量简单，<br />才能一直记下去。</h2><p>工时只需要告诉顺手：在哪、几点到几点、多少钱一小时。</p><div className="aside-divider" /><h3>记完以后</h3><ul><li>收入和支出自动汇总</li><li>点账单上的编辑可随时修改</li><li>刷新页面后记录仍然保留</li></ul><span className="subtle-tag">{cloudMode ? '保存后同步到云端账号' : '本机保存，不会上传到云端'}</span></aside></div>
   </>;
 }

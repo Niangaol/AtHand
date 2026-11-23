@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Car, CloudSun, Coffee, Compass, MapPin, Package, Plane, Sparkles, TrainFront, Utensils } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { PageHeading } from '../../components/PageHeading';
-import { gatewayUrl, isGatewayConnected } from '../../data/gateway';
+import { gatewayUrl, isCloudBackendUrl, isGatewayConnected } from '../../data/gateway';
 import { listMcpServices, mcpStateLabel } from '../../data/mcpServices';
 import type { McpServiceView } from '../../data/mcpServices';
 
@@ -25,7 +25,7 @@ const SERVICES: ServiceCard[] = [
   { name: 'variflight', label: '飞常准', icon: TrainFront, description: '航班动态、火车余票、空铁联运查询。', risk: '只读', scenarios: '出行', apply: 'https://ai.variflight.com/zh', env: 'VARIFLIGHT_KEY' },
   { name: 'kd100', label: '快递100', icon: Package, description: '快递轨迹、时效与价格查询，只查不寄。', risk: '只读', scenarios: '快递', apply: 'https://api.kuaidi100.com/document/how-to-use-mcp-service', env: 'KD100_KEY' },
   { name: 'fliggy', label: '飞猪', icon: Plane, description: '机票、酒店、火车票、门票搜索；不是 MCP，走本地 flyai 命令行。', risk: '只读', scenarios: '机酒 · 出行', apply: 'https://flyai.open.fliggy.com/docs', env: 'FLYAI_API_KEY', note: '需安装 CLI' },
-  { name: 'didi', label: '滴滴', icon: Car, description: '打车预估、叫车、司机位置；叫车会产生真实订单。', risk: '下单需确认', scenarios: '出行', apply: 'https://mcp.didichuxing.com', env: 'DIDI_MCP_KEY' },
+  { name: 'didi', label: '滴滴', icon: Car, description: '打车预估、叫车、司机位置；网关默认指向滴滴沙箱端点，返回模拟数据、不产生真实订单，换成正式地址才会真下单。', risk: '下单需确认', scenarios: '出行', apply: 'https://mcp.didichuxing.com', env: 'DIDI_MCP_KEY', note: '默认沙箱' },
   { name: 'luckin', label: '瑞幸咖啡', icon: Coffee, description: '到店自取点单、订单查询；支付二维码交给你自己付。', risk: '下单需确认', scenarios: '点单', apply: 'https://open.lkcoffee.com/mcp', env: 'LUCKIN_MCP_TOKEN' },
   { name: 'mcd', label: '麦当劳', icon: Utensils, description: '麦乐送/到店取餐、菜单算价、积分；下单返回支付链接。', risk: '下单需确认', scenarios: '点单', apply: 'https://open.mcd.cn/mcp/doc', env: 'MCD_MCP_TOKEN' },
 ];
@@ -50,7 +50,7 @@ const SCENES = [
 ] as const;
 
 function isCloudBackend(): boolean {
-  return /\/functions\/v1\/app$/.test(gatewayUrl().trim());
+  return isCloudBackendUrl(gatewayUrl());
 }
 
 export function ServicesPage() {

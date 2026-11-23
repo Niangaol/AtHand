@@ -5,7 +5,7 @@ import { useLocalToday } from './useLocalToday';
 import { buildRecord, buildWorkplace, parseAmount } from '../domain/ledger';
 import type { RecordDraft } from '../domain/ledger';
 import type { LedgerState, RecordEntry } from '../domain/records';
-import { clearGatewayAccountChanged, clearGatewaySession, gatewayAccountChanged, gatewayFetch, isGatewayConnected } from './gateway';
+import { backendNoun, clearGatewayAccountChanged, clearGatewaySession, gatewayAccountChanged, gatewayFetch, isGatewayConnected } from './gateway';
 import { createInitialState, isLedgerState, loadLedger, saveLedger, STORAGE_KEY } from './storage';
 
 type Result = { ok: true } | { ok: false; message: string };
@@ -61,8 +61,9 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
   const savingRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const connected = isGatewayConnected();
+  const noun = backendNoun();
   const [remote, setRemote] = useState<RemoteState>(() => connected
-    ? { status: 'syncing', message: '正在读取电脑上的账本…', updatedAt: null }
+    ? { status: 'syncing', message: `正在读取${noun}上的账本…`, updatedAt: null }
     : { status: 'off', message: '', updatedAt: null });
   const updatedAtRef = useRef<string | null>(null);
   const pendingRef = useRef(readPending());
@@ -87,8 +88,8 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
   }
 
   async function pushRemote(force = false): Promise<Result> {
-    if (!isGatewayConnected()) return { ok: false, message: '还没有连接电脑。' };
-    setRemote({ status: 'syncing', message: '正在保存到电脑…', updatedAt: updatedAtRef.current });
+    if (!isGatewayConnected()) return { ok: false, message: `还没有连接${noun}。` };
+    setRemote({ status: 'syncing', message: `正在保存到${noun}…`, updatedAt: updatedAtRef.current });
     try {
       const response = await gatewayFetch('/api/ledger', {
         method: 'PUT',
@@ -98,16 +99,16 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       const body = (await response.json().catch(() => null)) as { ok?: unknown; updatedAt?: unknown; ledger?: unknown } | null;
       if (response.status === 401) {
         clearGatewaySession();
-        setRemote({ status: 'error', message: '登录已过期，请重新连接电脑。', updatedAt: updatedAtRef.current });
-        return { ok: false, message: '登录已过期，请重新连接电脑。' };
+        setRemote({ status: 'error', message: `登录已过期，请重新连接${noun}。`, updatedAt: updatedAtRef.current });
+        return { ok: false, message: `登录已过期，请重新连接${noun}。` };
       }
       if (response.status === 409) {
         pendingRef.current = true;
         writePending(true);
-        setRemote({ status: 'conflict', message: '电脑上的账本已被其他设备更新，请选择保留哪一份。', updatedAt: updatedAtRef.current });
-        return { ok: false, message: '电脑上的账本已被更新，请选择保留哪一份。' };
+        setRemote({ status: 'conflict', message: `${noun}上的账本已被其他设备更新，请选择保留哪一份。`, updatedAt: updatedAtRef.current });
+        return { ok: false, message: `${noun}上的账本已被更新，请选择保留哪一份。` };
       }
-      if (!response.ok || body?.ok !== true || typeof body.updatedAt !== 'string') throw new Error('电脑上的服务返回异常。');
+      if (!response.ok || body?.ok !== true || typeof body.updatedAt !== 'string') throw new Error(`${noun}上的服务返回异常。`);
       updatedAtRef.current = body.updatedAt;
       pendingRef.current = false;
       writePending(false);
@@ -117,7 +118,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
     } catch (reason) {
       pendingRef.current = true;
       writePending(true);
-      const detail = reason instanceof Error ? reason.message : '连不上电脑。';
+      const detail = reason instanceof Error ? reason.message : `连不上${noun}。`;
       setRemote({ status: 'error', message: `${detail} 修改仍保存在本机，联网后可再试。`, updatedAt: updatedAtRef.current });
       return { ok: false, message: detail };
     }
@@ -135,14 +136,14 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       setRemote({ status: 'off', message: '', updatedAt: null });
       return { ok: true };
     }
-    setRemote({ status: 'syncing', message: '正在读取电脑上的账本…', updatedAt: updatedAtRef.current });
+    setRemote({ status: 'syncing', message: `正在读取${noun}上的账本…`, updatedAt: updatedAtRef.current });
     try {
       const response = await gatewayFetch('/api/ledger');
       const body = (await response.json().catch(() => null)) as { ok?: unknown; ledger?: unknown; updatedAt?: unknown } | null;
       if (response.status === 401) {
         clearGatewaySession();
-        setRemote({ status: 'off', message: '登录已过期，请重新连接电脑。', updatedAt: null });
-        return { ok: false, message: '登录已过期，请重新连接电脑。' };
+        setRemote({ status: 'off', message: `登录已过期，请重新连接${noun}。`, updatedAt: null });
+        return { ok: false, message: `登录已过期，请重新连接${noun}。` };
       }
       if (!response.ok || body?.ok !== true) throw new Error('读取后端账本失败。');
       const updatedAt = typeof body.updatedAt === 'string' ? body.updatedAt : null;
@@ -157,20 +158,20 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       }
       if (body.ledger === null || body.ledger === undefined) {
         const pushed = await pushRemote(false);
-        if (pushed.ok) setRemote({ status: 'synced', message: '已把本机账本上传到电脑。', updatedAt: updatedAtRef.current });
+        if (pushed.ok) setRemote({ status: 'synced', message: `已把本机账本上传到${noun}。`, updatedAt: updatedAtRef.current });
         return pushed;
       }
-      if (!isLedgerState(body.ledger)) throw new Error('电脑上的账本格式无法识别。');
+      if (!isLedgerState(body.ledger)) throw new Error(`${noun}上的账本格式无法识别。`);
       const serverLedger = body.ledger;
       if (sameLedger(serverLedger, stateRef.current)) {
         updatedAtRef.current = updatedAt;
         pendingRef.current = false;
         writePending(false);
-        setRemote({ status: 'synced', message: '已与电脑一致。', updatedAt });
+        setRemote({ status: 'synced', message: `已与${noun}一致。`, updatedAt });
         return { ok: true };
       }
       if (pendingRef.current) {
-        setRemote({ status: 'conflict', message: '本机有未同步的修改，电脑上也有新内容，请选择保留哪一份。', updatedAt });
+        setRemote({ status: 'conflict', message: `本机有未同步的修改，${noun}上也有新内容，请选择保留哪一份。`, updatedAt });
         return { ok: false, message: '本机有未同步的修改，请选择保留哪一份。' };
       }
       const applied = await applyExternal(serverLedger);
@@ -178,10 +179,10 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       updatedAtRef.current = updatedAt;
       pendingRef.current = false;
       writePending(false);
-      setRemote({ status: 'synced', message: '已读取电脑上的账本。', updatedAt });
+      setRemote({ status: 'synced', message: `已读取${noun}上的账本。`, updatedAt });
       return { ok: true };
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : '读取电脑账本失败。';
+      const message = reason instanceof Error ? reason.message : `读取${noun}账本失败。`;
       setRemote({ status: 'error', message, updatedAt: updatedAtRef.current });
       return { ok: false, message };
     }
@@ -193,13 +194,13 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
   }
 
   async function adoptRemote(): Promise<Result> {
-    if (!isGatewayConnected()) return { ok: false, message: '还没有连接电脑。' };
-    setRemote({ status: 'syncing', message: '正在读取电脑上的账本…', updatedAt: updatedAtRef.current });
+    if (!isGatewayConnected()) return { ok: false, message: `还没有连接${noun}。` };
+    setRemote({ status: 'syncing', message: `正在读取${noun}上的账本…`, updatedAt: updatedAtRef.current });
     try {
       const response = await gatewayFetch('/api/ledger');
       const body = (await response.json().catch(() => null)) as { ok?: unknown; ledger?: unknown; updatedAt?: unknown } | null;
-      if (!response.ok || body?.ok !== true) throw new Error('读取电脑账本失败。');
-      if (!isLedgerState(body.ledger)) throw new Error('电脑上还没有账本。');
+      if (!response.ok || body?.ok !== true) throw new Error(`读取${noun}账本失败。`);
+      if (!isLedgerState(body.ledger)) throw new Error(`${noun}上还没有账本。`);
       const applied = await applyExternal(body.ledger);
       if (!applied.ok) return applied;
       updatedAtRef.current = typeof body.updatedAt === 'string' ? body.updatedAt : null;
@@ -209,7 +210,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       setRemote({ status: 'synced', message: '已用云端账本覆盖本机。', updatedAt: updatedAtRef.current });
       return { ok: true };
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : '读取电脑账本失败。';
+      const message = reason instanceof Error ? reason.message : `读取${noun}账本失败。`;
       setRemote({ status: 'error', message, updatedAt: updatedAtRef.current });
       return { ok: false, message };
     }
@@ -222,7 +223,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
 
   useEffect(() => {
     if (isGatewayConnected()) void refreshRemote();
-    // 只在首次挂载时尝试读取电脑账本。
+    // 只在首次挂载时尝试读取远端账本。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

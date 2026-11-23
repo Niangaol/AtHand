@@ -89,10 +89,10 @@ test('the AI workspace is a primary entry and opens with Ctrl+K', async ({ page 
 test('the AI assistant configures a model and operates schedule, ledger and refuses deletes', async ({ page }) => {
   await page.goto('/settings');
   const settingsLoaded = page.waitForResponse((response) => response.url().endsWith('/api/assistant/settings') && response.request().method() === 'GET');
-  await page.getByLabel('电脑地址').fill(gateway);
+  await page.getByLabel('服务地址').fill(gateway);
   await page.getByLabel('访问口令').fill(password);
   await page.getByRole('button', { name: '连接', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '已连接电脑' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /已登录|登录账号或连接网关/ })).toBeVisible();
   await settingsLoaded;
 
   const section = page.getByRole('region', { name: 'AI 助手' });

@@ -1,0 +1,37 @@
+/* 「今天」页本周复盘面板 — 事实先由确定性代码算好，网关返回后再换成模型文案 */
+.review-panel { margin: 18px 0; padding: 18px 20px; border: 1px solid var(--rule); border-left: 4px solid var(--steel); border-radius: var(--r); background: var(--sheet); }
+.review-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.review-head h2 { margin: 4px 0 0; font-size: 16px; }
+.review-actions { display: flex; align-items: center; gap: 12px; }
+.review-actions .text-link { display: inline-flex; align-items: center; gap: 4px; }
+.review-tag { font-size: 11px; line-height: 1.6; color: var(--steel); border: 1px solid var(--rule-strong); border-radius: 999px; padding: 1px 8px; }
+.review-copy { margin: 10px 0 14px; font-size: 13.5px; line-height: 1.7; color: var(--ink-soft); }
+.review-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 0 0 16px; }
+.review-stats > div { padding: 10px 12px; background: var(--note); border-radius: var(--r-sm); }
+.review-stats dt { font-size: 11.5px; color: var(--muted); }
+.review-stats dd { margin: 4px 0 0; font-family: var(--font-figure); font-size: 18px; line-height: 1.4; color: var(--ink); }
+.review-stats dd small { display: block; margin-top: 3px; font-family: var(--font-ui); font-size: 11px; line-height: 1.6; color: var(--muted); }
+.review-subhead { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.review-categories { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+.review-categories li { display: grid; grid-template-columns: 56px minmax(0, 1fr) 40px; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-soft); }
+.review-categories li strong { font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; }
+.review-bar { display: block; height: 6px; background: var(--paper-deep); border-radius: 999px; overflow: hidden; }
+.review-bar i { display: block; height: 100%; background: var(--brand); }
+
+/* 七天柱：容器固定 64px 高，柱高按分钟数百分比；0 分钟即零高度，不会塌陷 */
+.review-focus { display: flex; align-items: flex-end; gap: 8px; height: 64px; margin-bottom: 8px; }
+.review-focus-day { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-width: 0; height: 100%; }
+.review-focus-bar { flex: 1; width: 100%; display: flex; align-items: flex-end; background: var(--paper-deep); border-radius: 3px; overflow: hidden; }
+.review-focus-bar i { display: block; width: 100%; height: 0; background: var(--steel); }
+.review-focus-day small { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.review-countdowns { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.review-countdowns li { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--note); font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+.review-countdowns li strong { font-size: 12px; font-weight: 500; color: var(--ink-soft); }
+.review-warnings { margin: 0 0 12px; padding-left: 18px; font-size: 12px; line-height: 1.8; color: var(--warn); }
+.review-panel .form-hint { margin: 0 0 12px; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.review-panel .form-hint:last-child { margin-bottom: 0; }
+
+@media (max-width: 900px) {
+  .review-panel { padding: 16px; }
+  .review-head { flex-wrap: wrap; }
+}
