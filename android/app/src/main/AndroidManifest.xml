@@ -12,7 +12,8 @@
 
     <application
         android:allowBackup="false"
-        android:label="顺手采集"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
         android:usesCleartextTraffic="true"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
