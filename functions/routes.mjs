@@ -4,6 +4,7 @@ import { applyCommand, canonical, commandKey, createPlannerState } from './plann
 import { reconcileCalendar } from './calendar.mjs';
 import { createCampus } from './campus.mjs';
 import { createAccount } from './account.mjs';
+import { createAssistant } from './assistant.mjs';
 import {
   ApiError, DOCS, fail, json, storageError, readJson, rowsOf, createDocs,
   sha256Hex,
@@ -11,6 +12,18 @@ import {
 
 const MAX_SAMPLES = 500;
 const MAX_RECEIPTS = 100_000;
+const MAX_ASSISTANTS = 20;
+
+// 云端跑在 Deno Edge Function（index.ts 里直接调 Deno.serve），但本地 `node --test` 里
+// 没有 Deno 全局，直接写 Deno.env.get 会抛 ReferenceError。这里做成安全包装：
+// 优先读平台注入的 Secret，本地退到 process.env，都没有就返回空串。
+function readEnv(key) {
+  try {
+    return globalThis.Deno?.env?.get(key) ?? globalThis.process?.env?.[key] ?? '';
+  } catch {
+    return '';
+  }
+}
 
 function validLedger(value) {
   return Boolean(value) && typeof value === 'object' && value.version === 1
@@ -29,6 +42,26 @@ export function application({ db, fetch: transport = globalThis.fetch }) {
     publicUser, findUserByUsername, findUserById, makePassword, passwordMatches,
     issueSession, validSession, revokeSession,
   } = account;
+
+  // 助手实例按用户缓存：briefCache 的 10 分钟 TTL 全靠实例常驻，每请求新建会让它完全失效，
+  // 平台统一 Key 下还会重复计费。docs 是按用户创建的（内含 owner 前缀），必须跟实例一起缓存，
+  // 不能跨用户复用。db 是应用级稳定的（index.ts 只创建一次），所以整个 application 作用域内缓存是安全的。
+  // 上限 MAX_ASSISTANTS，命中时移到队尾，超出时淘汰最久未使用的那个。
+  const assistants = new Map();
+  function assistantFor(userId, docs) {
+    const cached = assistants.get(userId);
+    if (cached) {
+      assistants.delete(userId);
+      assistants.set(userId, cached);
+      return cached;
+    }
+    const assistant = createAssistant({ docs, userId, env: { get: readEnv }, fetch: transport });
+    assistants.set(userId, assistant);
+    while (assistants.size > MAX_ASSISTANTS) {
+      assistants.delete(assistants.keys().next().value);
+    }
+    return assistant;
+  }
 
   async function migrateLegacyDocs(userId) {
     const now = new Date().toISOString();
@@ -326,18 +359,36 @@ export function application({ db, fetch: transport = globalThis.fetch }) {
         return json({ ok: true, added, total: merged.length });
       }
 
-      if (path === '/api/assistant/settings' && request.method === 'GET') {
-        return json({
-          ok: true, baseUrl: '', model: '', hasApiKey: false,
-          privacyMode: 'redact', updatedAt: null,
-        });
-      }
-
       if (path.startsWith('/api/assistant/')) {
-        return json({
-          ok: false, error: 'cloud_backend_limited',
-          message: '云端后端暂不运行内置助手，模型调用请在电脑上使用。',
-        }, 503);
+        const assistant = assistantFor(session.userId, docs);
+
+        if (path === '/api/assistant/settings') {
+          if (request.method === 'GET') return json({ ok: true, ...(await assistant.readSettings()) });
+          if (request.method === 'PUT') {
+            const body = await readJson(request);
+            return json({ ok: true, ...(await assistant.writeSettings(body)) });
+          }
+          fail(405, 'method_not_allowed', '不支持这个请求方法。');
+        }
+
+        if (path === '/api/assistant/test' && request.method === 'POST') {
+          return json({ ok: true, result: await assistant.test() });
+        }
+
+        if (path === '/api/assistant/chat' && request.method === 'POST') {
+          const body = await readJson(request);
+          const messages = Array.isArray(body?.messages) ? body.messages : [];
+          return json({ ok: true, ...(await assistant.chat(messages)) });
+        }
+
+        if (path === '/api/assistant/briefing' && request.method === 'GET') {
+          const params = new URL(request.url).searchParams;
+          const scope = params.get('scope') === 'week' ? 'week' : 'day';
+          const fresh = params.get('fresh') === '1';
+          return json({ ok: true, ...(await assistant.briefing({ scope, fresh })) });
+        }
+
+        fail(404, 'not_found', '没有这个助手接口。');
       }
 
       if (path.startsWith('/api/campus/')) {
@@ -355,6 +406,11 @@ export function application({ db, fetch: transport = globalThis.fetch }) {
       return json({ ok: false, error: 'not_found' }, 404);
     } catch (error) {
       if (error instanceof ApiError) {
+        return json({ ok: false, error: error.code, message: error.message }, error.status);
+      }
+      // AssistantError / AgentError 都是普通 Error 带 status + code，
+      // 必须排在 conflict 等按 code 分流的旧分支之前，否则会被兜底成 503 storage_unavailable。
+      if (error instanceof Error && typeof error.code === 'string' && Number.isInteger(error.status)) {
         return json({ ok: false, error: error.code, message: error.message }, error.status);
       }
       if (error?.code === 'conflict') return json({ ok: false, error: 'conflict', message: '数据冲突，请重试。' }, 409);
