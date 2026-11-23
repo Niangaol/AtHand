@@ -1,11 +1,16 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createPlannerStore } from './plannerStore.mjs';
 import { createCalendarStore } from './calendarStore.mjs';
 import { AgentError, createAgentApi } from './agentApi.mjs';
 import { AssistantError, createAssistant } from './assistant.mjs';
+import { createCampusApi } from './campusRoutes.mjs';
+import { CONFIG_PATH as MCP_CONFIG_DEFAULT, getResolvedConfigs, listServiceStatus, readMcpStore, removeServiceConfig, saveServiceConfig } from './mcpConfig.mjs';
+import { createAuditSink, createMcpGateway } from './mcpGateway.mjs';
+import { callReadOnlyTool } from './mcpToolbox.mjs';
 
 const PORT = Number(process.env.PORT || 18787);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -23,6 +28,10 @@ const MAX_AGENT_TOKENS = 20;
 const MAX_AUDIT = 200;
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_LIMIT = 8;
+const PAIR_TTL_MS = Number(process.env.SHUNSHOU_PAIR_TTL_MS || 2 * 60 * 1000);
+const PAIR_WINDOW_MS = 5 * 60 * 1000;
+const PAIR_LIMIT = 10;
+const MAX_PAIR_CODES = 10;
 
 // 网页部署在别处时，用 ALLOWED_ORIGINS 追加，逗号分隔。
 const ALLOWED_ORIGINS = new Set([
@@ -195,6 +204,42 @@ function recordFail(ip) {
   else entry.count += 1;
 }
 
+const pairCodes = new Map();
+const pairAttempts = new Map();
+
+function issuePairCode() {
+  const now = Date.now();
+  for (const [code, entry] of pairCodes) if (entry.expiresAt <= now) pairCodes.delete(code);
+  while (pairCodes.size >= MAX_PAIR_CODES) pairCodes.delete(pairCodes.keys().next().value);
+  const code = crypto.randomBytes(5).toString('hex');
+  pairCodes.set(code, { expiresAt: now + PAIR_TTL_MS });
+  return { code, expiresAt: now + PAIR_TTL_MS };
+}
+
+function pairBlocked(ip) {
+  const entry = pairAttempts.get(ip);
+  if (!entry || entry.resetAt <= Date.now()) return false;
+  return entry.count >= PAIR_LIMIT;
+}
+
+function recordPairFail(ip) {
+  const now = Date.now();
+  const entry = pairAttempts.get(ip);
+  if (!entry || entry.resetAt <= now) pairAttempts.set(ip, { count: 1, resetAt: now + PAIR_WINDOW_MS });
+  else entry.count += 1;
+}
+
+function lanCandidates() {
+  if (HOST !== '0.0.0.0' && HOST !== '::') return [];
+  const list = [];
+  for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
+    for (const item of addresses ?? []) {
+      if (item.family === 'IPv4' && !item.internal) list.push({ label: name, url: `http://${item.address}:${PORT}` });
+    }
+  }
+  return list;
+}
+
 function cors(request, response) {
   const origin = request.headers.origin;
   if (origin && ALLOWED_ORIGINS.has(origin)) {
@@ -295,6 +340,58 @@ function proxyCampus(request, response, url) {
 }
 
 let plannerStore;
+// 生活服务 MCP：配置在 local-sync/data/mcp-servers.json，凭据只进进程内配置，
+// 状态接口只返回脱敏地址与请求头名称。保存后重建网关，让新地址立即生效。
+const MCP_CONFIG_FILE = process.env.SHUNSHOU_MCP_CONFIG || path.join(DATA_DIR, 'mcp-servers.json');
+
+function mcpCliProbe(config) {
+  const bin = typeof config?.cli?.bin === 'string' ? config.cli.bin : typeof config?.bin === 'string' ? config.bin : '';
+  if (!bin) return false;
+  const directories = String(process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  const names = process.platform === 'win32' ? [`${bin}.cmd`, `${bin}.exe`, `${bin}.bat`, bin] : [bin];
+  for (const directory of directories) {
+    for (const name of names) {
+      try { if (fs.existsSync(path.join(directory, name))) return true; } catch { /* 读不到这个目录就继续找。 */ }
+    }
+  }
+  return false;
+}
+
+let mcpGateway;
+function resetMcpGateway() { mcpGateway = null; }
+function getMcpGateway() {
+  if (!mcpGateway) {
+    mcpGateway = createMcpGateway({
+      configs: getResolvedConfigs({ path: MCP_CONFIG_FILE }),
+      audit: createAuditSink({ write: (entry) => recordAudit(entry) }),
+      probeCli: mcpCliProbe,
+    });
+  }
+  return mcpGateway;
+}
+
+function mcpServiceView(service, gateway) {
+  const live = gateway?.status()?.services?.find((item) => item.name === service.name) ?? null;
+  const status = live?.connected ? 'ready' : (service.state?.status ?? 'unknown');
+  return {
+    name: service.name,
+    label: service.label,
+    prefix: service.prefix,
+    transport: service.transport,
+    enabled: service.enabled,
+    configured: service.configured,
+    urlMasked: service.urlMasked,
+    headerNames: Array.isArray(service.headerKeys) ? service.headerKeys : [],
+    scenarios: Array.isArray(service.scenarios) ? service.scenarios : [],
+    setup: service.setup ?? '',
+    state: {
+      status,
+      message: live?.connected ? (live.toolCount ? `已连接，${live.toolCount} 个工具。` : '已连接。')
+        : (live?.lastErrorMessage || service.state?.message || ''),
+    },
+  };
+}
+
 const getPlannerStore = () => plannerStore ??= createPlannerStore(DATA_DIR);
 let calendarStore;
 const getCalendarStore = () => calendarStore ??= createCalendarStore(DATA_DIR);
@@ -313,15 +410,17 @@ const getAgentApi = () => agentApi ??= createAgentApi({
     if (!validLedger(ledger)) throw new Error('invalid_ledger');
     writeJson(LEDGER_FILE, { ledger, updatedAt: new Date().toISOString() });
   },
+  campus: () => getCampusApi(),
+  mcp: () => getMcpGateway(),
 });
 let assistant;
 const getAssistant = () => assistant ??= createAssistant({
   directory: DATA_DIR,
-  getTools: () => getAgentApi().manifest({ kind: 'assistant', name: '内置助手', scope: 'write' }).tools,
-  callTool: ({ tool, args, requestId }) => {
+  getTools: async () => (await getAgentApi().manifest({ kind: 'assistant', name: '内置助手', scope: 'write' })).tools,
+  callTool: async ({ tool, args, requestId }) => {
     const summary = JSON.stringify(args ?? {}).slice(0, 500);
     try {
-      const result = getAgentApi().call({ tool, arguments: args, requestId, scope: 'write', actor: 'assistant', caller: { kind: 'assistant', name: '内置助手', scope: 'write' } });
+      const result = await getAgentApi().call({ tool, arguments: args, requestId, scope: 'write', actor: 'assistant', caller: { kind: 'assistant', name: '内置助手', scope: 'write' } });
       recordAudit({ at: new Date().toISOString(), actor: '内置助手', actorKind: 'session', tool, summary, ok: true, error: null, revision: result.revision ?? null });
       return { ok: true, ...result };
     } catch (error) {
@@ -330,6 +429,8 @@ const getAssistant = () => assistant ??= createAssistant({
     }
   },
 });
+let campusApi;
+const getCampusApi = () => campusApi ??= createCampusApi({ directory: DATA_DIR, helperUrl: HDU_TARGET });
 
 const server = http.createServer(async (request, response) => {
   cors(request, response);
@@ -370,6 +471,32 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/api/pair') {
+    const ip = request.socket.remoteAddress ?? 'unknown';
+    if (pairBlocked(ip)) {
+      json(response, 429, { ok: false, error: 'too_many_attempts' });
+      return;
+    }
+    try {
+      const body = JSON.parse(await readBody(request));
+      const code = typeof body?.code === 'string' ? body.code.trim().toLowerCase() : '';
+      const entry = code ? pairCodes.get(code) : null;
+      if (!entry || entry.expiresAt <= Date.now()) {
+        recordPairFail(ip);
+        json(response, 401, { ok: false, error: 'invalid_code' });
+        return;
+      }
+      pairCodes.delete(code);
+      pairAttempts.delete(ip);
+      const issued = issueToken(authState);
+      json(response, 200, { ok: true, token: issued.token, expiresAt: issued.expiresAt });
+    } catch (error) {
+      const tooLarge = error instanceof Error && error.message === 'body_too_large';
+      json(response, tooLarge ? 413 : 400, { ok: false, error: tooLarge ? 'body_too_large' : 'invalid_json' });
+    }
+    return;
+  }
+
   const session = authorized(request);
   if (!session) {
     json(response, 401, { ok: false, error: 'unauthorized' });
@@ -377,6 +504,119 @@ const server = http.createServer(async (request, response) => {
   }
 
   const allowedOrigin = !request.headers.origin || ALLOWED_ORIGINS.has(request.headers.origin);
+
+  if (request.method === 'POST' && url.pathname === '/api/pair/code') {
+    if (session.kind !== 'session') {
+      json(response, 403, { ok: false, error: 'session_required' });
+      return;
+    }
+    if (!allowedOrigin) {
+      json(response, 403, { ok: false, error: 'origin_denied' });
+      return;
+    }
+    json(response, 200, { ok: true, ...issuePairCode(), urls: lanCandidates() });
+    return;
+  }
+
+  if (url.pathname === '/api/mcp/tools' && request.method === 'GET') {
+    if (session.kind !== 'session') { json(response, 403, { ok: false, error: 'session_required' }); return; }
+    if (!allowedOrigin) { json(response, 403, { ok: false, error: 'origin_denied' }); return; }
+    try {
+      const listing = await getMcpGateway().listTools({});
+      json(response, 200, {
+        ok: true,
+        tools: listing.tools.map((tool) => ({
+          name: tool.name, service: tool.service, risk: tool.risk,
+          description: tool.description, inputSchema: tool.inputSchema,
+        })),
+        skipped: listing.skipped ?? [],
+        errors: listing.errors ?? [],
+        omittedTools: listing.omittedTools ?? 0,
+      });
+    } catch (error) {
+      json(response, 502, { ok: false, error: error?.code ?? 'mcp_error', message: error instanceof Error ? error.message : '读取工具列表失败。' });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/mcp/call' && request.method === 'POST') {
+    if (session.kind !== 'session') { json(response, 403, { ok: false, error: 'session_required' }); return; }
+    if (!allowedOrigin) { json(response, 403, { ok: false, error: 'origin_denied' }); return; }
+    let body;
+    try { body = JSON.parse(await readBody(request)); } catch {
+      json(response, 400, { ok: false, error: 'invalid_json', message: '请求体不是合法 JSON。' });
+      return;
+    }
+    const tool = typeof body?.tool === 'string' ? body.tool.trim() : '';
+    if (!tool) { json(response, 400, { ok: false, error: 'invalid_tool', message: '请提供工具名。' }); return; }
+    const args = body?.args && typeof body.args === 'object' && !Array.isArray(body.args) ? body.args : {};
+    const result = await callReadOnlyTool(getMcpGateway(), tool, args);
+    json(response, result.ok ? 200 : result.code === 'tool_not_read_only' ? 400 : 502, { ...result });
+    return;
+  }
+
+  if (url.pathname === '/api/mcp/services' && request.method === 'GET') {
+    if (session.kind !== 'session') { json(response, 403, { ok: false, error: 'session_required' }); return; }
+    if (!allowedOrigin) { json(response, 403, { ok: false, error: 'origin_denied' }); return; }
+    const listing = listServiceStatus({ path: MCP_CONFIG_FILE, probeCli: mcpCliProbe });
+    json(response, 200, {
+      ok: true,
+      services: listing.services.map((service) => mcpServiceView(service, getMcpGateway())),
+      store: { exists: listing.exists, reason: listing.reason },
+    });
+    return;
+  }
+
+  const mcpMatch = url.pathname.match(/^\/api\/mcp\/services\/([a-z0-9_-]{1,40})(?:\/(probe))?$/);
+  if (mcpMatch) {
+    if (session.kind !== 'session') { json(response, 403, { ok: false, error: 'session_required' }); return; }
+    if (!allowedOrigin) { json(response, 403, { ok: false, error: 'origin_denied' }); return; }
+    const name = mcpMatch[1];
+    const isProbe = mcpMatch[2] === 'probe';
+    try {
+      if (isProbe && request.method === 'POST') {
+        const gateway = getMcpGateway();
+        const listed = await gateway.listTools({ service: name, refresh: true });
+        if (!listed.tools.length) {
+          const failure = listed.errors.find((item) => item.name === name) ?? listed.errors[0];
+          throw new AgentError(400, failure?.code ?? 'mcp_not_configured', failure?.message ?? '这个服务现在连不上。');
+        }
+        json(response, 200, {
+          ok: true, toolCount: listed.tools.length, tools: listed.tools.map((item) => item.name),
+          truncated: listed.truncated, omittedTools: listed.omittedTools,
+          message: `连接成功，发现 ${listed.tools.length} 个工具。`,
+        });
+        return;
+      }
+      if (request.method === 'PUT') {
+        const body = JSON.parse(await readBody(request));
+        saveServiceConfig(name, body, { path: MCP_CONFIG_FILE });
+        resetMcpGateway();
+        const entry = listServiceStatus({ path: MCP_CONFIG_FILE, probeCli: mcpCliProbe }).services.find((item) => item.name === name);
+        json(response, 200, { ok: true, service: mcpServiceView(entry, getMcpGateway()) });
+        return;
+      }
+      if (request.method === 'DELETE') {
+        const removed = removeServiceConfig(name, { path: MCP_CONFIG_FILE });
+        resetMcpGateway();
+        const entry = listServiceStatus({ path: MCP_CONFIG_FILE, probeCli: mcpCliProbe }).services.find((item) => item.name === name);
+        json(response, 200, { ok: true, removed: removed.removed === true, service: mcpServiceView(entry, getMcpGateway()) });
+        return;
+      }
+      json(response, 405, { ok: false, error: 'method_not_allowed' });
+    } catch (error) {
+      if (error?.code === 'mcp_unknown_service') { json(response, 404, { ok: false, error: error.code, message: error.message }); return; }
+      if (error?.code === 'mcp_invalid_config') { json(response, 400, { ok: false, error: error.code, message: error.message }); return; }
+      if (error?.code === 'mcp_config_write_failed') { json(response, 500, { ok: false, error: error.code, message: error.message }); return; }
+      json(response, error instanceof AgentError ? error.status : 502, { ok: false, error: error?.code ?? 'mcp_error', message: error instanceof Error ? error.message : '生活服务请求失败。' });
+    }
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/campus/')) {
+    await getCampusApi().handle(request, response, url, { session, allowedOrigin });
+    return;
+  }
 
   if (url.pathname === '/api/agent/tokens' || url.pathname.startsWith('/api/agent/tokens/')) {
     if (session.kind !== 'session') {
@@ -501,7 +741,7 @@ const server = http.createServer(async (request, response) => {
     const caller = session.kind === 'agent'
       ? { kind: 'agent', name: session.name, scope: session.scope }
       : { kind: 'session', name: '网页登录', scope: 'write' };
-    json(response, 200, { ok: true, ...getAgentApi().manifest(caller) });
+    json(response, 200, { ok: true, ...(await getAgentApi().manifest(caller)) });
     return;
   }
 
@@ -534,7 +774,7 @@ const server = http.createServer(async (request, response) => {
     }
     try {
       const requestId = String(request.headers['idempotency-key'] ?? body?.requestId ?? '');
-      const result = getAgentApi().call({
+      const result = await getAgentApi().call({
         tool, arguments: body?.arguments ?? {}, requestId, actor,
         scope: session.kind === 'agent' ? session.scope : 'write', caller,
       });

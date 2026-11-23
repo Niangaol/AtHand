@@ -21,5 +21,5 @@ it('saves a custom conversion rate and requires confirmation before clearing exa
   await user.click(screen.getByRole('button', { name: '清空示例数据' }));
   await user.click(screen.getByRole('button', { name: '确认清空示例' }));
   expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).records).toEqual([]);
-  expect(screen.getByText('本机账本')).toBeInTheDocument();
+  expect(await screen.findByText('本机账本')).toBeInTheDocument();
 });

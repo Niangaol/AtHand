@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createPlannerState, plannerSchema, applyCommand } from './planner';
+import { newTrip } from './trips';
+
+const scheduledTrip = () => {
+  const trip = newTrip('trip-a', '上海周末', '2026-11-28', '2026-11-29');
+  trip.transport = [{ id: 'out', mode: 'train', from: '杭州东', to: '上海虹桥', date: '2026-11-28', departTime: '08:00', arriveTime: '09:00', ref: 'G1', arriveDate: '' }];
+  trip.lodging = [{ id: 'stay', name: '外滩', address: '', checkIn: '2026-11-28', checkOut: '2026-11-29', ref: '' }];
+  trip.days[0].items = [{ id: 'walk', text: '外滩走走', startTime: '', endTime: '', location: '' }];
+  trip.schedule = { timeZone: 'Asia/Shanghai', legs: ['out'], stays: ['stay'], items: ['walk'] };
+  return trip;
+};
 
 const now = Date.parse('2026-11-21T10:00:00+08:00');
 describe('planner boundary and commands', () => {
@@ -48,6 +58,37 @@ describe('planner boundary and commands', () => {
     expect(partial.events).toHaveLength(3);
     const full = applyCommand(base, { kind: 'events.import', sourceId: 'file-a', from: now, to: now + 86400_000, complete: true, events: [] }, now);
     expect(full.events.map((x) => x.id)).toEqual(['manual', 'elsewhere']);
+  });
+  it('generates linked trip events atomically and removes them with the trip', () => {
+    const trip = scheduledTrip();
+    const state = applyCommand(createPlannerState(), { kind: 'put', collection: 'trips', value: trip }, now);
+    expect(state.events.map((event) => event.id)).toEqual(['trip:trip-a:leg:out', 'trip:trip-a:stay:stay', 'trip:trip-a:item:walk']);
+    expect(state.events.every((event) => event.source === 'trip' && event.sourceId === 'trip-a')).toBe(true);
+    const removed = applyCommand(state, { kind: 'delete', collection: 'trips', id: 'trip-a' }, now);
+    expect(removed.trips).toEqual([]);
+    expect(removed.events).toEqual([]);
+  });
+  it('leaves legacy trips and their existing events untouched until a schedule is chosen', () => {
+    const trip = scheduledTrip();
+    delete (trip as Partial<typeof trip>).schedule;
+    const manual = { id: 'manual', title: '自己加的', kind: 'event' as const, location: '', start: now, end: now + 3600_000, allDay: false, timeZone: 'Asia/Shanghai', source: 'manual' as const, sourceId: '' };
+    const state = applyCommand({ ...createPlannerState(), events: [manual] }, { kind: 'put', collection: 'trips', value: trip }, now);
+    expect(state.events.map((event) => event.id)).toEqual(['manual']);
+  });
+  it('refuses generic event writes to trip-managed copies and forged trip sources', () => {
+    const state = applyCommand(createPlannerState(), { kind: 'put', collection: 'trips', value: scheduledTrip() }, now);
+    const copy = state.events[0];
+    expect(() => applyCommand(state, { kind: 'put', collection: 'events', value: { ...copy, title: '改标题' } }, now)).toThrow(/旅记/);
+    expect(() => applyCommand(state, { kind: 'delete', collection: 'events', id: copy.id }, now)).toThrow(/旅记/);
+    const forged = { ...copy, id: 'fake' };
+    expect(() => applyCommand(createPlannerState(), { kind: 'put', collection: 'events', value: forged }, now)).toThrow(/旅记/);
+  });
+  it('rejects a linked plan item that is missing and a conflicting event identity', () => {
+    const missing = scheduledTrip();
+    missing.schedule = { ...missing.schedule!, stays: ['gone'] };
+    expect(() => applyCommand(createPlannerState(), { kind: 'put', collection: 'trips', value: missing }, now)).toThrow(/链接/);
+    const occupied = { id: 'trip:trip-a:leg:out', title: '别人的', kind: 'event' as const, location: '', start: now, end: now + 3600_000, allDay: false, timeZone: 'Asia/Shanghai', source: 'manual' as const, sourceId: '' };
+    expect(() => applyCommand({ ...createPlannerState(), events: [occupied] }, { kind: 'put', collection: 'trips', value: scheduledTrip() }, now)).toThrow(/占用/);
   });
   it('rejects generic writes to focus sessions and unsafe source URLs', () => {
     expect(() => applyCommand(createPlannerState(), { kind: 'put', collection: 'focusSessions', value: {} } as never, now)).toThrow();

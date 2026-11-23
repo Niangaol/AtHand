@@ -10,6 +10,7 @@ import { buildRecord, buildWorkplace, parseAmount } from '../src/domain/ledger.t
 import { isLedgerState } from '../src/data/storage.ts';
 import { changeTripDates, cities, newTrip } from '../src/domain/trips.ts';
 import { expenseCategories } from '../src/domain/records.ts';
+import { buildCampusExamEvents, buildCampusRules, previewCampus } from '../src/domain/campusSync.ts';
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const MAX_RANGE_DAYS = 62;
@@ -95,6 +96,10 @@ const tripDayItemInput = z.object({ tripId: idSchema, date: dateSchema, text: z.
 const tripPackingAddInput = z.object({ tripId: idSchema, text: z.string().trim().min(1).max(2000) }).strict();
 const tripPackingSetInput = z.object({ tripId: idSchema, itemId: idSchema, checked: z.boolean() }).strict();
 const tripVisitAddInput = z.object({ tripId: idSchema, city: z.string().trim().min(1).max(50), date: dateSchema.optional(), visited: z.boolean().default(false) }).strict();
+const campusNoticesInput = z.object({
+  q: z.string().trim().max(200).default(''), sourceKey: z.string().trim().max(100).optional(),
+  page: z.number().int().min(1).max(100).default(1), pageSize: z.number().int().min(1).max(50).default(20),
+}).strict();
 
 const json = (schema) => {
   const value = z.toJSONSchema(schema, { io: 'input' });
@@ -142,7 +147,7 @@ const describeRecord = (record, workplaces) => ({
 });
 const ledgerResult = (result) => ({ result, revision: null, serverId: null });
 
-export function createAgentApi({ readPlanner, execute, readCalendars, readLedger, writeLedger, timeZone = TIME_ZONE }) {
+export function createAgentApi({ readPlanner, execute, readCalendars, readLedger, writeLedger, campus, mcp, timeZone = TIME_ZONE }) {
   function snapshot() {
     const doc = readPlanner();
     const now = Date.now();
@@ -201,6 +206,29 @@ export function createAgentApi({ readPlanner, execute, readCalendars, readLedger
     const trip = state.trips.find((item) => item.id === id);
     if (!trip) throw new AgentError(404, 'trip_not_found', '这趟旅行不存在。');
     return trip;
+  }
+  function campusApi() {
+    if (!campus) throw new AgentError(503, 'campus_unavailable', '电脑上的校园服务没有启动。');
+    return campus();
+  }
+  function campusFailure(error) {
+    const code = typeof error?.code === 'string' ? error.code : 'helper_unavailable';
+    const status = code === 'not_connected' ? 409 : code === 'timeout' ? 504 : code === 'helper_unavailable' || code === 'schema_changed' ? 503 : 403;
+    const messages = {
+      not_connected: '还没有连接杭电助手。',
+      personal_disabled: '个人校园数据只读开关未开启。',
+      owner_binding_required: '杭电助手未开启本人绑定，个人数据不可用。',
+      cli_not_logged_in: '杭电助手还没有登录学校账号。',
+      helper_unavailable: '连不上杭电助手，请确认它已经启动。',
+      timeout: '杭电助手响应超时。',
+      schema_changed: '学校返回的字段和预期不一致，暂时不能同步。',
+    };
+    throw new AgentError(status, `campus_${code}`, messages[code] ?? (error instanceof Error ? error.message : '校园服务暂时不可用。'));
+  }
+  function envelopeResult(value) {
+    const result = { ...value };
+    delete result.ok;
+    return result;
   }
 
   const tools = [
@@ -749,22 +777,189 @@ export function createAgentApi({ readPlanner, execute, readCalendars, readLedger
         return { result: { visit: tripOrThrow(doc.state, args.tripId).visits.find((entry) => entry.id === visit.id) }, revision: doc.revision, serverId: doc.serverId };
       },
     },
+    {
+      name: 'campus_status', scope: 'read', input: emptyInput,
+      description: '查看杭电助手是否已连接、个人只读数据是否开启、本次会话何时过期。',
+      handler: () => {
+        const snap = snapshot();
+        return { result: envelopeResult(campusApi().state()), revision: snap.doc.revision, serverId: snap.doc.serverId };
+      },    },
+    {
+      name: 'campus_calendar', scope: 'read', input: emptyInput,
+      description: '查看学校校历：学年、学期、开学/结课日期、当前教学周和总周数。',
+      handler: async () => {
+        const snap = snapshot();
+        try {
+          const value = await campusApi().read('calendar');
+          return { result: envelopeResult(value), revision: snap.doc.revision, serverId: snap.doc.serverId };
+        } catch (error) { campusFailure(error); }
+      },
+    },
+    {
+      name: 'campus_notices', scope: 'read', input: campusNoticesInput,
+      description: '搜索校园公开通知，返回标题、来源、发布时间和原文链接；默认第一页20条。',
+      handler: async (args) => {
+        const snap = snapshot();
+        try {
+          const value = await campusApi().read('notices', { q: args.q, source_key: args.sourceKey, page: args.page, page_size: args.pageSize });
+          return { result: envelopeResult(value), revision: snap.doc.revision, serverId: snap.doc.serverId };
+        } catch (error) { campusFailure(error); }
+      },
+    },
+    {
+      name: 'campus_courses', scope: 'read', input: emptyInput,
+      description: '查看本学期课表（个人只读数据；需要先在网页开启个人数据）。',
+      handler: async () => {
+        const snap = snapshot();
+        try {
+          const value = await campusApi().read('courses');
+          return { result: envelopeResult(value), revision: snap.doc.revision, serverId: snap.doc.serverId };
+        } catch (error) { campusFailure(error); }
+      },
+    },
+    {
+      name: 'campus_exams', scope: 'read', input: emptyInput,
+      description: '查看本学期考试安排（个人只读数据；需要先在网页开启个人数据）。',
+      handler: async () => {
+        const snap = snapshot();
+        try {
+          const value = await campusApi().read('exams');
+          return { result: envelopeResult(value), revision: snap.doc.revision, serverId: snap.doc.serverId };
+        } catch (error) { campusFailure(error); }
+      },
+    },
+    {
+      name: 'campus_life', scope: 'read', input: emptyInput,
+      description: '查看饭卡余额与最近流水、电费余额、图书馆借阅和预约。三类数据各自返回成功或错误，互不拖垮。',
+      handler: async () => {
+        const snap = snapshot();
+        try {
+          const result = await campusApi().readLife();
+          return { result, revision: snap.doc.revision, serverId: snap.doc.serverId };
+        } catch (error) { campusFailure(error); }
+      },
+    },
+    {
+      name: 'campus_sync_courses', scope: 'write', input: emptyInput,
+      description: '把本学期课表同步成日程里的课程规则，只新增或更新杭电助手来源的条目，不删除任何条目。',
+      handler: async (args, context) => {
+        const api = campusApi();
+        let calendar; let bodies;
+        try {
+          calendar = (await api.read('calendar')).data;
+          bodies = (await api.read('courses')).data;
+        } catch (error) { campusFailure(error); }
+        if (!calendar?.startDate) throw new AgentError(400, 'campus_calendar_missing', '校历缺少开学日期，暂时不能生成课程规则。');
+        const built = buildCampusRules(bodies?.courses ?? [], calendar, 'Asia/Shanghai');
+        const first = snapshot();
+        const preview = previewCampus(first.doc.state.courseRules, first.doc.state.events, built.rules, []);
+        const writes = [...preview.courses.create, ...preview.courses.update];
+        let doc = first.doc;
+        writes.forEach((value, index) => { doc = commit('campus_sync_courses', `${context.requestId}:${index}`, () => ({ kind: 'put', collection: 'courseRules', value })).doc; });
+        return {
+          result: { written: writes.length, unchanged: preview.courses.unchanged.length, removed: preview.courses.removed.map((rule) => rule.id), warnings: built.warnings },
+          revision: doc.revision, serverId: doc.serverId,
+        };
+      },
+    },
+    {
+      name: 'campus_sync_exams', scope: 'write', input: emptyInput,
+      description: '把本学期考试同步成日程事件，只新增或更新杭电助手来源的条目，不删除任何条目。',
+      handler: async (args, context) => {
+        let bodies;
+        try { bodies = (await campusApi().read('exams')).data; } catch (error) { campusFailure(error); }
+        const built = buildCampusExamEvents(bodies?.exams ?? [], 'Asia/Shanghai');
+        const first = snapshot();
+        const preview = previewCampus(first.doc.state.courseRules, first.doc.state.events, [], built.events);
+        const writes = [...preview.events.create, ...preview.events.update];
+        let doc = first.doc;
+        writes.forEach((value, index) => { doc = commit('campus_sync_exams', `${context.requestId}:${index}`, () => ({ kind: 'put', collection: 'events', value })).doc; });
+        return {
+          result: { written: writes.length, unchanged: preview.events.unchanged.length, removed: preview.events.removed.map((event) => event.id), warnings: built.warnings },
+          revision: doc.revision, serverId: doc.serverId,
+        };
+      },
+    },
   ];
 
-  function manifest(caller) {
+  function mcpGateway() {
+    return typeof mcp === 'function' ? mcp() : null;
+  }
+
+  function mcpInput() {
+    return z.looseObject({
+      confirmed: z.boolean().optional(),
+      requestId: z.string().max(MAX_IDEMPOTENCY).optional(),
+    });
+  }
+
+  function mcpToolView(tool) {
+    const riskLabel = tool.risk === 'order' ? '（会产生订单，必须先让用户确认）' : tool.risk === 'pay' ? '（支付类，不执行，只把支付信息交给用户）' : '';
+    return {
+      name: tool.name,
+      scope: tool.risk === 'read' ? 'read' : 'write',
+      description: `[生活服务] ${tool.description || tool.name}${riskLabel}`,
+      input: mcpInput(),
+      mcp: true,
+      risk: tool.risk,
+    };
+  }
+
+  async function listMcpTools() {
+    const gateway = mcpGateway();
+    if (!gateway) return { tools: [], errors: [], skipped: [], omittedTools: 0 };
+    try {
+      return await gateway.listTools({});
+    } catch (error) {
+      return { tools: [], errors: [{ name: '', code: 'mcp_unavailable', message: error?.message ?? '生活服务没有启动。' }], skipped: [], omittedTools: 0 };
+    }
+  }
+
+  async function callMcpTool(toolName, args, { requestId, scope }) {
+    const gateway = mcpGateway();
+    if (!gateway) throw new AgentError(404, 'unknown_tool', '没有这个工具，请先读取 manifest。');
+    const listing = await listMcpTools();
+    const meta = listing.tools.find((item) => item.name === toolName);
+    if (!meta) {
+      const skipped = listing.skipped.find((item) => item.name === toolName);
+      const failure = listing.errors.find((item) => item.name === toolName) ?? listing.errors[0];
+      const message = skipped?.message ?? failure?.message ?? '这个生活服务还没有配置或当前不可用。';
+      const code = skipped?.reason ?? failure?.code ?? 'mcp_not_configured';
+      throw new AgentError(503, code, message);
+    }
+    if (meta.risk !== 'read' && scope !== 'write') {
+      throw new AgentError(403, 'scope_read_only', '这个令牌是只读的，不能触发下单或支付类操作。');
+    }
+    const parsed = args && typeof args === 'object' ? args : {};
+    const result = await gateway.callTool(toolName, parsed, {
+      requestId: parsed.requestId || requestId,
+      confirmed: parsed.confirmed === true,
+    });
+    return { result, revision: null, serverId: null };
+  }
+
+  async function manifest(caller) {
     const snap = snapshot();
+    const listing = await listMcpTools();
+    const builtin = tools.map(({ handler, input, ...tool }) => ({ ...tool, input: json(input) }));
+    const external = listing.tools.map((tool) => ({ ...mcpToolView(tool), input: tool.inputSchema ?? { type: 'object', properties: {} } }));
     return {
       api: 'shunshou-agent', version: 1, serverId: snap.doc.serverId, revision: snap.doc.revision, timeZone,
       caller,
       idempotency: { header: 'Idempotency-Key', requiredFor: 'write', minLength: 8, maxLength: MAX_IDEMPOTENCY },
       limits: { maxRangeDays: MAX_RANGE_DAYS },
-      tools: tools.map(({ handler, input, ...tool }) => ({ ...tool, input: json(input) })),
+      tools: [...builtin, ...external],
+      mcp: {
+        omittedTools: listing.omittedTools ?? 0,
+        errors: listing.errors ?? [],
+        skipped: listing.skipped ?? [],
+      },
     };
   }
 
-  function call({ tool, arguments: args, requestId = '', scope = 'read', actor = 'web', caller }) {
+  async function call({ tool, arguments: args, requestId = '', scope = 'read', actor = 'web', caller }) {
     const found = tools.find((item) => item.name === tool);
-    if (!found) throw new AgentError(404, 'unknown_tool', '没有这个工具，请先读取 manifest。');
+    if (!found) return callMcpTool(tool, args, { requestId, scope });
     if (found.scope === 'write' && scope !== 'write') throw new AgentError(403, 'scope_read_only', '这个令牌是只读的，不能修改内容。');
     if (found.scope === 'write') {
       const key = String(requestId).trim();
@@ -773,7 +968,7 @@ export function createAgentApi({ readPlanner, execute, readCalendars, readLedger
     }
     const parsed = found.input.parse(args ?? {});
     try {
-      return found.handler(parsed, { requestId, actor, caller });
+      return await found.handler(parsed, { requestId, actor, caller });
     } catch (error) {
       if (error instanceof AgentError) throw error;
       if (error?.name === 'ZodError') throw new AgentError(400, 'invalid_arguments', '参数格式不正确。', { issues: error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) });

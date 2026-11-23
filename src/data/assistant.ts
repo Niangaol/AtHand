@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { GatewayError, gatewayFetch } from './gateway';
 
 const settingsSchema = z.object({
-  ok: z.literal(true), baseUrl: z.string(), model: z.string(), hasApiKey: z.boolean(), updatedAt: z.string().nullable(),
+  ok: z.literal(true), baseUrl: z.string(), model: z.string(), hasApiKey: z.boolean(),
+  privacyMode: z.enum(['local-only', 'redact', 'off']), updatedAt: z.string().nullable(),
 }).strict();
 export type AssistantSettings = Omit<z.infer<typeof settingsSchema>, 'ok'>;
 
@@ -31,16 +32,16 @@ async function read(response: Response): Promise<Record<string, unknown>> {
 export async function getAssistantSettings(): Promise<AssistantSettings> {
   const parsed = settingsSchema.safeParse(await read(await gatewayFetch('/api/assistant/settings')));
   if (!parsed.success) throw new GatewayError('电脑返回的助手设置格式无效。', 'invalid_response');
-  return { baseUrl: parsed.data.baseUrl, model: parsed.data.model, hasApiKey: parsed.data.hasApiKey, updatedAt: parsed.data.updatedAt };
+  return { baseUrl: parsed.data.baseUrl, model: parsed.data.model, hasApiKey: parsed.data.hasApiKey, privacyMode: parsed.data.privacyMode, updatedAt: parsed.data.updatedAt };
 }
 
-export type AssistantSettingsInput = { baseUrl?: string; model?: string; apiKey?: string; clearApiKey?: boolean };
+export type AssistantSettingsInput = { baseUrl?: string; model?: string; apiKey?: string; clearApiKey?: boolean; privacyMode?: AssistantSettings['privacyMode'] };
 export async function saveAssistantSettings(input: AssistantSettingsInput): Promise<AssistantSettings> {
   const parsed = settingsSchema.safeParse(await read(await gatewayFetch('/api/assistant/settings', {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
   })));
   if (!parsed.success) throw new GatewayError('电脑返回的助手设置格式无效。', 'invalid_response');
-  return { baseUrl: parsed.data.baseUrl, model: parsed.data.model, hasApiKey: parsed.data.hasApiKey, updatedAt: parsed.data.updatedAt };
+  return { baseUrl: parsed.data.baseUrl, model: parsed.data.model, hasApiKey: parsed.data.hasApiKey, privacyMode: parsed.data.privacyMode, updatedAt: parsed.data.updatedAt };
 }
 
 export type AssistantTestResult = z.infer<typeof testSchema>['result'];

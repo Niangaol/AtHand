@@ -157,8 +157,14 @@ export function PlannerProvider({ children, storage = browserStorage }: { childr
     if (initial.serverId || isGatewayConnected()) throw new Error('同步中的记录不能整份覆盖。请保留备份，在未绑定电脑的浏览器恢复。');
     if (parsed.focusSessions.some((s) => s.status === 'running' || s.status === 'paused')) throw new Error('备份含进行中的专注，请先结束计时再导出。');
     let next = emptyEnvelope();
-    for (const collection of ['events', 'courseRules', 'countdowns', 'trips', 'serviceEntries'] as const) {
-      for (const value of parsed[collection]) next = enqueue(next, { kind: 'put', collection, value }, Date.now(), crypto.randomUUID());
+    for (const value of parsed.events) {
+      if (value.source === 'trip') continue;
+      next = enqueue(next, { kind: 'put', collection: 'events', value }, Date.now(), crypto.randomUUID());
+    }
+    for (const collection of ['courseRules', 'countdowns', 'trips', 'serviceEntries'] as const) {
+      for (const value of parsed[collection]) {
+        next = enqueue(next, { kind: 'put', collection, value }, Date.now(), crypto.randomUUID());
+      }
     }
     for (const value of parsed.focusSessions) next = enqueue(next, { kind: 'focus.import', value }, Date.now(), crypto.randomUUID());
     next = enqueue(next, { kind: 'preferences', focusMinutes: parsed.preferences.focusMinutes }, Date.now(), crypto.randomUUID());

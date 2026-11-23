@@ -120,6 +120,7 @@ export function AssistantPage() {
         <div className="assistant-status-strip">
           <span className={`assistant-state${connected ? ' ok' : ''}`}><i />{connected ? '电脑已连接' : '未连接电脑'}</span>
           <span className="assistant-state model" title={settings?.model || undefined}>{settings?.model ? `模型 · ${settings.model}` : '模型未配置'}</span>
+          {settings ? <span className="assistant-state privacy">{settings.privacyMode === 'local-only' ? '只在本机' : settings.privacyMode === 'redact' ? '云端脱敏' : '不脱敏'}</span> : null}
           {messages.length ? <button type="button" className="assistant-clear" onClick={() => setConfirmClear(true)}><Trash2 size={15} />清空</button> : null}
         </div>
       </header>

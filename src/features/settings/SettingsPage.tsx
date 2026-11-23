@@ -1,28 +1,41 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot, Database, Download, Hourglass, KeyRound, Laptop, LockKeyhole, Smartphone, Sparkles, Sprout } from 'lucide-react';
+import QRCode from 'qrcode';
+import { Bot, Database, Download, GraduationCap, Hourglass, KeyRound, Laptop, LockKeyhole, Smartphone, Sparkles, Sprout } from 'lucide-react';
 import { PageHeading } from '../../components/PageHeading';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useRecords } from '../../data/RecordsProvider';
 import { downloadText, exportCsv } from '../../domain/csv';
 import { probeSamplesToRecords } from '../../domain/probeImport';
-import { gatewayFetch, gatewayLogin, gatewayLogout, gatewayUrl, isGatewayConnected } from '../../data/gateway';
+import { clearGatewaySession, createPairingCode, defaultGatewayUrl, gatewayFetch, gatewayLogin, gatewayLogout, gatewayMe, gatewayUrl, gatewayUsername, isGatewayConnected } from '../../data/gateway';
+import type { GatewayPairingCode } from '../../data/gateway';
+import { choosePairingUrl, isLoopbackBase, pairingQrText } from '../../domain/pairing';
 import { createAgentToken, listAgentAudit, listAgentTokens, revokeAgentToken } from '../../data/agentTokens';
 import type { AgentAuditEntry, AgentToken } from '../../data/agentTokens';
 import { getAssistantSettings, saveAssistantSettings, testAssistant } from '../../data/assistant';
+import type { AssistantSettings } from '../../data/assistant';
 import { toolLabel } from '../../data/agentToolLabels';
+import { useCampus } from '../../data/CampusProvider';
+import { AccountPanel } from './AccountPanel';
+import { McpServicesPanel } from './McpServicesPanel';
 
 export function SettingsPage() {
   const { records, workplaces, settings, today, rawData, blocked, updateRate, clearExamples, resetLedger, importRecords, remote, refreshRemote, uploadLocalToRemote, adoptRemote, disconnectRemote } = useRecords();
   const [rate, setRate] = useState((settings.hourlyRateCents / 100).toFixed(2));
   const [notice, setNotice] = useState('');
-  const [gatewayAddress, setGatewayAddress] = useState(gatewayUrl() || 'http://127.0.0.1:18787');
+  const [gatewayAddress, setGatewayAddress] = useState(gatewayUrl() || defaultGatewayUrl() || 'http://127.0.0.1:18787');
   const [password, setPassword] = useState('');
+  const [account, setAccount] = useState(gatewayUsername());
   const [connected, setConnected] = useState(isGatewayConnected());
   const [connecting, setConnecting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('');
   const [syncStatus, setSyncStatus] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [pairing, setPairing] = useState<(GatewayPairingCode & { url: string }) | null>(null);
+  const [pairingStatus, setPairingStatus] = useState('');
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const pairingCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const importRecordsRef = useRef(importRecords);
   const [confirm, setConfirm] = useState<'examples' | 'reset' | null>(null);
   const [agents, setAgents] = useState<AgentToken[]>([]);
   const [agentAudit, setAgentAudit] = useState<AgentAuditEntry[]>([]);
@@ -37,9 +50,23 @@ export function SettingsPage() {
   const [assistantModel, setAssistantModel] = useState('');
   const [assistantKey, setAssistantKey] = useState('');
   const [assistantHasKey, setAssistantHasKey] = useState(false);
+  const [assistantPrivacy, setAssistantPrivacy] = useState<AssistantSettings['privacyMode']>('redact');
   const [assistantStatus, setAssistantStatus] = useState('');
   const [assistantBusy, setAssistantBusy] = useState(false);
+  const { status: campusStatus, statusLoading: campusLoading, statusError: campusStatusError, disconnect: disconnectCampus, refresh: refreshCampus, startAuth: startCampusAuth } = useCampus();
+  const [campusBusy, setCampusBusy] = useState(false);
+  const [campusMessage, setCampusMessage] = useState('');
   const hasExamples = records.some((record) => record.source === 'demo') || workplaces.some((unit) => unit.source === 'demo');
+  const cloudMode = /\/functions\/v1\/app$/.test(gatewayAddress.trim());
+
+  useEffect(() => {
+    if (!connected || !cloudMode) return;
+    let active = true;
+    gatewayMe()
+      .then((user) => { if (!active) return; if (user) setAccount(user.username); else { clearGatewaySession(); setConnected(false); setConnectionStatus('登录已失效，请重新登录。'); } })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [connected]);
 
   async function testService() {
     try {
@@ -61,11 +88,12 @@ export function SettingsPage() {
     try {
       await gatewayLogin(gatewayAddress, password);
       setConnected(true);
+      setAccount(gatewayUsername());
       setPassword('');
       const result = await refreshRemote();
-      setConnectionStatus(result.ok ? '已连接电脑，账本已对齐。' : result.message);
+      setConnectionStatus(result.ok ? '已登录，账本已对齐。' : result.message);
     } catch (error) {
-      setConnectionStatus(error instanceof Error ? error.message : '连接失败。');
+      setConnectionStatus(error instanceof Error ? error.message : '登录失败。');
     } finally {
       setConnecting(false);
     }
@@ -78,8 +106,48 @@ export function SettingsPage() {
     } finally {
       disconnectRemote();
       setConnected(false);
+      setAccount('');
       setConnecting(false);
-      setConnectionStatus('已断开，电脑上的登录令牌也已作废。');
+      setConnectionStatus('已退出登录，服务端会话已作废。');
+    }
+  }
+
+  async function disconnectCampusCloud() {
+    setCampusBusy(true);
+    setCampusMessage('');
+    try {
+      await disconnectCampus();
+      setCampusMessage('已断开校园授权，云端 PAT 已撤销。');
+    } catch (error) {
+      setCampusMessage(error instanceof Error ? error.message : '断开校园授权失败。');
+    } finally {
+      setCampusBusy(false);
+    }
+  }
+
+  async function reauthorizeCampus() {
+    setCampusBusy(true);
+    setCampusMessage('');
+    try {
+      await startCampusAuth();
+      setCampusMessage('已生成授权链接，请到校园页打开授权页完成确认。');
+    } catch (error) {
+      setCampusMessage(error instanceof Error ? error.message : '生成授权链接失败。');
+    } finally {
+      setCampusBusy(false);
+    }
+  }
+
+  async function refreshCampusCloud() {
+    setCampusBusy(true);
+    setCampusMessage('');
+    try {
+      await refreshCampus();
+      setCampusMessage('已刷新校园数据。');
+    } catch (error) {
+      setCampusMessage(error instanceof Error ? error.message : '刷新失败。');
+    } finally {
+      setCampusBusy(false);
     }
   }
 
@@ -103,6 +171,74 @@ export function SettingsPage() {
       setSyncing(false);
     }
   }
+
+  async function startPairing() {
+    setPairingBusy(true);
+    setPairingStatus('');
+    try {
+      const created = await createPairingCode();
+      const base = gatewayUrl();
+      const url = choosePairingUrl(base, created.urls);
+      setPairing({ ...created, url });
+      if (isLoopbackBase(url)) {
+        setPairingStatus('电脑只监听本机地址，手机可能连不上；请改用隧道地址，或用 HOST=0.0.0.0 启动并放行防火墙。');
+      }
+    } catch (error) {
+      setPairingStatus(error instanceof Error ? error.message : '生成配对码失败。');
+    } finally {
+      setPairingBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    importRecordsRef.current = importRecords;
+  }, [importRecords]);
+
+  useEffect(() => {
+    const canvas = pairingCanvasRef.current;
+    if (!pairing || !canvas) return;
+    QRCode.toCanvas(canvas, pairingQrText(pairing), { width: 200, margin: 2, errorCorrectionLevel: 'M' })
+      .catch(() => setPairingStatus('二维码生成失败，请刷新重试。'));
+  }, [pairing]);
+
+  useEffect(() => {
+    if (!pairing) return;
+    let active = true;
+    const known = new Set<string>();
+    const tick = async (first: boolean) => {
+      if (!isGatewayConnected() || Date.now() > pairing.expiresAt) return;
+      try {
+        const response = await gatewayFetch('/api/samples');
+        const body = (await response.json().catch(() => null)) as { ok?: unknown; samples?: unknown } | null;
+        if (!response.ok || body?.ok !== true || !Array.isArray(body.samples)) return;
+        const samples = body.samples as Array<{ id?: unknown }>;
+        if (first) {
+          for (const sample of samples) if (sample && typeof sample.id === 'string') known.add(sample.id);
+          return;
+        }
+        const fresh = samples.filter((sample) => sample && typeof sample.id === 'string' && !known.has(sample.id));
+        if (fresh.length === 0) return;
+        for (const sample of fresh) known.add(sample.id as string);
+        const result = probeSamplesToRecords(fresh);
+        if (!active) return;
+        if (result.records.length === 0) {
+          setPairingStatus(`手机发来 ${fresh.length} 条样本，但其中没有可导入的支出。`);
+          return;
+        }
+        const saved = await importRecordsRef.current(result.records);
+        if (!active) return;
+        setPairingStatus(saved.ok
+          ? `已从手机导入 ${result.records.length} 笔支出；跳过收入 ${result.skippedIncome}、待确认 ${result.skippedPending}、无效 ${result.invalid}。`
+          : saved.message);
+      } catch { /* 配对期间网络抖动不打断二维码。 */ }
+    };
+    void tick(true);
+    const timer = window.setInterval(() => void tick(false), 3000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [pairing]);
 
   const refreshAgentPanel = useCallback(async () => {
     if (!isGatewayConnected()) return;
@@ -164,6 +300,7 @@ export function SettingsPage() {
       setAssistantBaseUrl(settings.baseUrl);
       setAssistantModel(settings.model);
       setAssistantHasKey(settings.hasApiKey);
+      setAssistantPrivacy(settings.privacyMode);
     }).catch((error) => {
       if (active) setAssistantStatus(error instanceof Error ? error.message : '读取助手设置失败。');
     });
@@ -174,10 +311,11 @@ export function SettingsPage() {
     setAssistantBusy(true);
     setAssistantStatus('');
     try {
-      const saved = await saveAssistantSettings({ baseUrl: assistantBaseUrl, model: assistantModel, ...(assistantKey.trim() ? { apiKey: assistantKey.trim() } : {}) });
+      const saved = await saveAssistantSettings({ baseUrl: assistantBaseUrl, model: assistantModel, privacyMode: assistantPrivacy, ...(assistantKey.trim() ? { apiKey: assistantKey.trim() } : {}) });
       setAssistantBaseUrl(saved.baseUrl);
       setAssistantModel(saved.model);
       setAssistantHasKey(saved.hasApiKey);
+      setAssistantPrivacy(saved.privacyMode);
       setAssistantKey('');
       setAssistantStatus('助手设置已保存到电脑。');
     } catch (error) {
@@ -225,24 +363,81 @@ export function SettingsPage() {
       <div className="setting-row"><LockKeyhole size={22} /><div><h3>备份与重置</h3><p>原始 JSON 可保留完整账本或排查损坏数据；当前不提供自动导入。重置将永久删除此浏览器中的记录和单位。</p></div><div className="setting-actions"><button className="button secondary compact" disabled={rawData === null} onClick={() => { if (rawData !== null) { downloadText(rawData, `顺手原始备份-${today}.json`, 'application/json;charset=utf-8'); setNotice('已发起原始备份下载，请确认文件已保存。'); } }}>下载原始备份</button><button className="button secondary compact danger-text" onClick={() => setConfirm('reset')}>重置账本</button></div></div>
     </section>
     <section className="panel settings-panel">
-      <h2>电脑与网页</h2>
-      <div className="setting-row"><Laptop size={22} /><div><h3>{connected ? '已连接电脑' : '连接我的电脑'}</h3><p>把电脑当作服务器：网页、手机和电脑共用同一份账本。远程访问时填隧道的 HTTPS 地址；口令在电脑第一次启动 <code>npm run sync</code> 时打印，之后不再显示。</p>
+      <h2>账号与后端</h2>
+      <div className="setting-row"><Laptop size={22} /><div><h3>{connected ? `已登录${account || gatewayUsername() ? `：${account || gatewayUsername()}` : ''}` : '登录账号或连接网关'}</h3><p>云端后端使用账号和密码登录；本机网关仍使用启动口令。登录后账本、生活记录和校园授权都按账号隔离。</p>
         {connected ? <>
           <p className="form-hint" role="status">{remoteStatus || '已连接。'}</p>
           <div className="setting-actions">
-            <button className="button secondary compact" disabled={blocked} onClick={async () => { const result = await refreshRemote(); setNotice(result.ok ? '已与电脑同步。' : result.message); }}>立即同步</button>
-            {remote.status === 'conflict' ? <><button className="button secondary compact" disabled={blocked} onClick={async () => { const result = await uploadLocalToRemote(); setNotice(result.ok ? '已用本机账本覆盖电脑。' : result.message); }}>用本机覆盖电脑</button><button className="button secondary compact" onClick={async () => { const result = await adoptRemote(); setNotice(result.ok ? '已用电脑账本覆盖本机。' : result.message); }}>用电脑覆盖本机</button></> : null}
-            <button className="button secondary compact danger-text" disabled={connecting} onClick={disconnect}>断开连接</button>
+            <button className="button secondary compact" disabled={blocked} onClick={async () => { const result = await refreshRemote(); setNotice(result.ok ? '已与云端同步。' : result.message); }}>立即同步</button>
+            {remote.status === 'conflict' ? <><button className="button secondary compact" disabled={blocked} onClick={async () => { const result = await uploadLocalToRemote(); setNotice(result.ok ? '已用本机账本覆盖云端。' : result.message); }}>用本机覆盖云端</button><button className="button secondary compact" onClick={async () => { const result = await adoptRemote(); setNotice(result.ok ? '已用云端账本覆盖本机。' : result.message); }}>用云端覆盖本机</button></> : null}
+            <button className="button secondary compact danger-text" disabled={connecting} onClick={disconnect}>退出登录</button>
           </div>
-        </> : <form className="rate-form" onSubmit={connect}>
-          <label>电脑地址<input value={gatewayAddress} onChange={(event) => setGatewayAddress(event.target.value)} placeholder="https://xxxx.trycloudflare.com 或 http://127.0.0.1:18787" /></label>
-          <label>访问口令<input type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="首次启动时打印的口令" /></label>
+          {remote.status === 'conflict' ? <p className="form-hint">切换账号时不会自动把上一个账号的本机账本上传。请先导出备份，再选择保留哪一份；要使用全新的空账号，请先重置本机账本。</p> : null}
+        </> : cloudMode ? <div className="account-cta">
+          <div className="setting-actions">
+            <Link className="button primary compact" to="/login">登录账号</Link>
+            <Link className="button secondary compact" to="/register">注册新账号</Link>
+          </div>
+          <p className="form-hint">云端后端使用账号和密码登录。登录后账本、生活记录和校园授权都按账号隔离；首个注册账号会继承此前的单账号数据。</p>
+          <details className="auth-advanced">
+            <summary>云端服务地址</summary>
+            <label>服务地址<input value={gatewayAddress} onChange={(event) => setGatewayAddress(event.target.value)} placeholder="https://你的站点/functions/v1/app" /></label>
+            <p className="form-hint">部署在 Qoder Sites 时已自动填好，一般不用改。</p>
+          </details>
+        </div> : <form className="rate-form" onSubmit={connect}>
+          <label>服务地址<input value={gatewayAddress} onChange={(event) => setGatewayAddress(event.target.value)} placeholder="https://xxxx.trycloudflare.com 或 http://127.0.0.1:18787" /></label>
+          <label>访问口令<input type="password" autoComplete="off" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="本机首次启动时打印的口令" /></label>
           <button type="button" className="button secondary compact" onClick={testService}>测试服务</button>
-          <button className="button secondary compact" disabled={connecting || password.length < 8}>{connecting ? '正在连接' : '连接'}</button>
+          <button type="button" className="button secondary compact" disabled={connecting || password.length < 8}>{connecting ? '正在连接' : '连接'}</button>
+          <p className="form-hint">本机网关使用启动时打印的访问口令。</p>
         </form>}
         {connectionStatus ? <p className="form-hint" role="status">{connectionStatus}</p> : null}
       </div></div>
-      <div className="setting-row"><Smartphone size={22} /><div><h3>手机采集</h3><p>手机 App 填同一个地址和口令后上传样本；这里只导入已确认的支出，收入和待确认会跳过。</p><div className="setting-actions"><button type="button" className="button secondary compact" disabled={syncing || blocked || !connected} onClick={pullSamples}>拉取并导入</button></div>{syncStatus ? <p className="form-hint" role="status">{syncStatus}</p> : null}</div></div>
+      {connected && cloudMode ? <div className="account-panel-wrap">
+        <AccountPanel onLoggedOut={() => { clearGatewaySession(); setConnected(false); setAccount(''); setConnectionStatus('已退出登录，请重新登录。'); }} />
+      </div> : null}
+      <div className="setting-row"><Smartphone size={22} /><div><h3>手机采集</h3><p>让手机 App 扫码配对，样本会自动传到这里并导入；只导入已确认的支出，收入和待确认会跳过。也可以继续用地址和口令手动同步。</p>
+        <div className="setting-actions">
+          <button type="button" className="button secondary compact" disabled={pairingBusy || blocked || !connected} onClick={startPairing}>{pairingBusy ? '正在生成' : '手机扫码配对'}</button>
+          <button type="button" className="button secondary compact" disabled={syncing || blocked || !connected} onClick={pullSamples}>{syncing ? '正在导入' : '拉取并导入'}</button>
+        </div>
+        {pairing ? <div className="pairing-box">
+          <canvas ref={pairingCanvasRef} className="pairing-qr" aria-label="手机配对二维码" />
+          <div className="pairing-meta">
+            <p>手机打开「顺手采集」→ 连接设置 → 扫码配对，扫完会自动上传现有样本。</p>
+            {pairing.urls.length > 1 ? <label>手机能访问的地址<select value={pairing.url} onChange={(event) => setPairing({ ...pairing, url: event.target.value })}>{pairing.urls.map((item) => <option key={item.url} value={item.url}>{item.label} · {item.url}</option>)}</select></label> : null}
+            <p className="form-hint">目标地址：{pairing.url}<br />有效期至 {new Date(pairing.expiresAt).toLocaleTimeString('zh-CN')}，过期后请刷新二维码。</p>
+            <div className="setting-actions">
+              <button type="button" className="button secondary compact" disabled={pairingBusy} onClick={startPairing}>刷新二维码</button>
+              <button type="button" className="button secondary compact" onClick={() => { setPairing(null); setPairingStatus(''); }}>收起</button>
+            </div>
+            {pairingStatus ? <p className="form-hint" role="status">{pairingStatus}</p> : null}
+          </div>
+        </div> : pairingStatus ? <p className="form-hint" role="status">{pairingStatus}</p> : null}
+        {syncStatus ? <p className="form-hint" role="status">{syncStatus}</p> : null}
+      </div></div>
+    </section>
+    <section className="panel settings-panel" aria-labelledby="mcp-settings-title">
+      <h2 id="mcp-settings-title">生活服务</h2>
+      <McpServicesPanel connected={connected} cloudMode={cloudMode} />
+    </section>
+    <section className="panel settings-panel" aria-labelledby="campus-settings-title">
+      <h2 id="campus-settings-title"><GraduationCap size={20} /> 校园助手</h2>
+      <p className="settings-lead">校园助手运行在云端，通过 HDUHelp 官方设备授权连接；PAT 只保存在云端数据库，网页拿不到。报名、选座、群聊等写操作每次都会要求确认。</p>
+      {!connected ? <p className="form-hint">先连接上面的云端后端，再连接校园助手。</p> : campusLoading && !campusStatus ? <p className="form-hint" role="status">正在读取校园授权状态…</p> : campusStatusError ? <p className="form-error" role="alert">{campusStatusError}</p> : campusStatus?.connected ? <>
+        <div className="setting-row"><Laptop size={22} /><div><h3>校园授权已连接</h3><p>{campusStatus.scopes.length} 项权限{ campusStatus.expiresAt ? ` · 到期 ${new Date(campusStatus.expiresAt).toLocaleDateString('zh-CN')}` : ' · 长期有效' }。待完成的授权请到校园页查看。</p>
+          <div className="setting-actions">
+            <button type="button" className="button secondary compact" disabled={campusBusy} onClick={() => void refreshCampusCloud()}>刷新</button>
+            <Link className="button secondary compact" to="/campus">打开校园页</Link>
+            <button type="button" className="button secondary compact" disabled={campusBusy} onClick={() => void reauthorizeCampus()}>补充全部权限</button>
+            <button type="button" className="button secondary compact danger-text" disabled={campusBusy} onClick={() => void disconnectCampusCloud()}>断开校园授权</button>
+          </div>
+        </div></div>
+        {campusStatus.pending ? <p className="form-hint">有一个等待确认的授权，请到校园页打开授权页。</p> : null}
+      </> : <div className="setting-row"><Laptop size={22} /><div><h3>还没有连接校园助手</h3><p>到校园页生成 HDUHelp 授权链接，在你的 HDUHelp 账号里确认设备与权限清单；网页不会接收学校密码。</p>
+        <div className="setting-actions"><Link className="button secondary compact" to="/campus">去校园页连接</Link></div>
+      </div></div>}
+      {campusMessage ? <p className="form-hint" role="status">{campusMessage}</p> : null}
     </section>
     <section className="panel settings-panel" aria-labelledby="assistant-settings-title">
       <h2 id="assistant-settings-title"><Sparkles size={20} /> AI 助手</h2>
@@ -252,6 +447,7 @@ export function SettingsPage() {
           <label>模型地址<input value={assistantBaseUrl} onChange={(event) => setAssistantBaseUrl(event.target.value)} placeholder="http://127.0.0.1:11434/v1" disabled={assistantBusy} /></label>
           <label>模型名称<input value={assistantModel} onChange={(event) => setAssistantModel(event.target.value)} placeholder="例如 ling-3.0-tiny:32k" maxLength={200} disabled={assistantBusy} /></label>
           <label>API Key<input type="password" autoComplete="off" value={assistantKey} onChange={(event) => setAssistantKey(event.target.value)} placeholder={assistantHasKey ? '已保存，留空保持不变' : '本机 Ollama 可留空'} disabled={assistantBusy} /></label>
+          <label>隐私模式<select value={assistantPrivacy} onChange={(event) => setAssistantPrivacy(event.target.value as AssistantSettings['privacyMode'])} disabled={assistantBusy}><option value="redact">云端脱敏（推荐）</option><option value="local-only">只在本机（云端会拒绝）</option><option value="off">不脱敏</option></select></label>
           <div className="setting-actions">
             <button className="button secondary compact" disabled={assistantBusy}>{assistantBusy ? '正在处理' : '保存模型设置'}</button>
             <button type="button" className="button secondary compact" disabled={assistantBusy} onClick={testAssistantModel}>测试连接</button>
@@ -260,7 +456,7 @@ export function SettingsPage() {
           </div>
         </form>
         {assistantStatus ? <p className="form-hint" role="status">{assistantStatus}</p> : null}
-        <p className="form-hint">本机 Ollama 填 <code>http://127.0.0.1:11434/v1</code>；云端填兼容 OpenAI 的地址和 Key。接云端时，日程和账本摘要会发给服务商。</p>
+        <p className="form-hint">本机 Ollama 填 <code>http://127.0.0.1:11434/v1</code>；云端填兼容 OpenAI 的地址和 Key。默认“云端脱敏”：姓名、学号、手机、卡号、课程名等先换占位符再发给服务商，回复在本机还原。占位符不是硬隔离，时间和金额结构仍可能被推断；切到云端前请确认这个取舍。</p>
       </>}
     </section>
     <section className="panel settings-panel" aria-labelledby="agent-api-title">

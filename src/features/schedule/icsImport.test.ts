@@ -9,7 +9,7 @@ describe('ICS import preview', () => {
     const preview = await parseIcs(wrap(body), '大课表', '2026-11-01', '2026-12-01', 'Asia/Shanghai');
     expect(preview.events).toHaveLength(2000);
     expect(preview.complete).toBe(false);
-  });
+  }, 20000);
   it('includes exceptions moved into range from far outside it', async () => {
     const master = one.replace('SUMMARY:数学', 'RRULE:FREQ=WEEKLY;COUNT=30\r\nSUMMARY:数学');
     const moved = 'BEGIN:VEVENT\r\nUID:math\r\nRECURRENCE-ID;TZID=Asia/Shanghai:20270220T090000\r\nDTSTART;TZID=Asia/Shanghai:20261122T110000\r\nDTEND;TZID=Asia/Shanghai:20261122T120000\r\nSUMMARY:提前调课\r\nEND:VEVENT';

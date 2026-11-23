@@ -28,7 +28,11 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     const timeout = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch(`${url}/api/calendar`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+      const cloud = /\/functions\/v1\/app$/.test(url);
+      const response = await fetch(`${url}/api/calendar`, {
+        headers: { Authorization: `Bearer ${token}`, ...(cloud ? { 'X-Shunshou-Session': token } : {}) },
+        signal: controller.signal,
+      });
       if (response.status === 401) throw new Error('登录已过期，请重新连接电脑');
       if (!response.ok) throw new Error('手机日历读取失败');
       const next = documentSchema.parse(await response.json());

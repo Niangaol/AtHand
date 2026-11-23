@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { tripSchema } from './planner';
-import { changeTripDates, copyPacking, cityVisits, newTrip } from './trips';
+import { changeTripDates, copyPacking, cityVisits, newTrip, shiftTripDates, removeTripItem, removeTripLeg, removeTripStay } from './trips';
 
 describe('trip planning and confirmed footprint', () => {
   it('rejects out-of-range city dates and duplicate nested identities', () => {
@@ -18,9 +18,44 @@ describe('trip planning and confirmed footprint', () => {
   });
   it('does not silently discard itinerary or visit records when shortening dates', () => {
     const trip = newTrip('a', '假日', '2026-11-21', '2026-11-23');
-    trip.days[2].items.push({ id: 'item', text: '已订门票' });
+    trip.days[2].items.push({ id: 'item', text: '已订门票', startTime: '', endTime: '', location: '' });
     expect(() => changeTripDates(trip, '2026-11-21', '2026-11-22')).toThrow(/范围外/);
     expect(changeTripDates(trip, '2026-11-20', '2026-11-23').days[3].items[0].text).toBe('已订门票');
+  });
+  it('lists every out-of-range plan instead of silently dropping it', () => {
+    const trip = newTrip('a', '周末', '2026-11-21', '2026-11-24');
+    trip.transport = [{ id: 'leg', mode: 'train', from: '杭州', to: '上海', date: '2026-11-24', departTime: '', arriveTime: '', ref: '', arriveDate: '' }];
+    trip.lodging = [{ id: 'stay', name: '酒店', address: '', checkIn: '2026-11-22', checkOut: '2026-11-24', ref: '' }];
+    trip.visits = [{ id: 'visit', cityId: 'cn:shanghai', city: '上海', date: '2026-11-24', latitude: 31, longitude: 121, visited: true }];
+    expect(() => changeTripDates(trip, '2026-11-21', '2026-11-23')).toThrow(/交通[\s\S]*住宿[\s\S]*城市/);
+    expect(() => changeTripDates(trip, '2026-11-21', '2026-11-23')).toThrow(/2026-11-24/);
+  });
+  it('shifts every dated plan by whole days, including across a year boundary', () => {
+    const trip = newTrip('a', '跨年', '2026-12-30', '2027-01-01');
+    trip.days[0].items.push({ id: 'item', text: '外滩', startTime: '', endTime: '', location: '' });
+    trip.transport = [{ id: 'leg', mode: 'flight', from: '杭州', to: '广州', date: '2026-12-31', departTime: '22:00', arriveTime: '00:30', ref: 'CZ', arriveDate: '2027-01-01' }];
+    trip.lodging = [{ id: 'stay', name: '酒店', address: '', checkIn: '2026-12-31', checkOut: '2027-01-01', ref: '' }];
+    trip.visits = [{ id: 'visit', cityId: 'cn:guangzhou', city: '广州', date: '2027-01-01', latitude: 23, longitude: 113, visited: false }];
+    const shifted = shiftTripDates(trip, '2027-01-02', '2027-01-04');
+    expect(shifted.days.map((day) => day.date)).toEqual(['2027-01-02', '2027-01-03', '2027-01-04']);
+    expect(shifted.days[0].items[0].text).toBe('外滩');
+    expect(shifted.transport[0]).toMatchObject({ date: '2027-01-03', arriveDate: '2027-01-04' });
+    expect(shifted.lodging[0]).toMatchObject({ checkIn: '2027-01-03', checkOut: '2027-01-04' });
+    expect(shifted.visits[0].date).toBe('2027-01-04');
+    expect(() => shiftTripDates(trip, '2026-12-30', '2026-12-31')).toThrow(/范围/);
+  });
+  it('drops the schedule link when an adopted plan is deleted, so the trip still saves', () => {
+    const trip = newTrip('a', '周末', '2026-11-21', '2026-11-22');
+    trip.transport = [{ id: 'leg', mode: 'train', from: '杭州', to: '上海', date: '2026-11-21', departTime: '', arriveTime: '', ref: '', arriveDate: '' }];
+    trip.lodging = [{ id: 'stay', name: '酒店', address: '', checkIn: '2026-11-21', checkOut: '2026-11-22', ref: '' }];
+    trip.days[0].items.push({ id: 'item', text: '外滩', startTime: '', endTime: '', location: '' });
+    trip.schedule = { timeZone: 'Asia/Shanghai', legs: ['leg'], stays: ['stay'], items: ['item'] };
+    expect(removeTripLeg(trip, 'leg').schedule).toMatchObject({ legs: [], stays: ['stay'] });
+    expect(removeTripStay(trip, 'stay').schedule).toMatchObject({ stays: [] });
+    const withoutItem = removeTripItem(trip, 'item');
+    expect(withoutItem.days[0].items).toEqual([]);
+    expect(withoutItem.schedule).toMatchObject({ legs: ['leg'], stays: ['stay'], items: [] });
+    expect(tripSchema.parse(withoutItem)).toBeTruthy();
   });
   it('copies packing items with fresh identity, reset checks, and no shared mutable state', () => {
     const original = [{ id: 'a', text: '充电器', checked: true }];

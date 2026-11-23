@@ -1,35 +1,20 @@
-import { courseSchema, dateSchema, eventSchema } from './planner.ts';
+import { courseSchema, eventSchema } from './planner.ts';
 import type { CourseRule, PlannerEvent, PlannerState } from './planner.ts';
 import type { RecordEntry } from './records.ts';
 import { shiftDate, toDateKey } from './dates.ts';
+import { localTimeZone, zonedInput, zonedTimestamp } from './zoned.ts';
 
-export const localTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-export function zonedInput(stamp: number, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(stamp);
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)!.value;
-  return `${value('year')}-${value('month')}-${value('day')}T${value('hour')}:${value('minute')}`;
-}
-export function zonedTimestamp(value: string, timeZone: string): number {
-  if (!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error('请填写完整日期和时间。');
-  dateSchema.parse(value.slice(0, 10));
-  const wall = Date.parse(`${value}:00Z`);
-  let candidate = wall;
-  for (let i = 0; i < 4; i++) {
-    const actual = zonedInput(candidate, timeZone);
-    if (actual === value) return candidate;
-    candidate += wall - Date.parse(`${actual}:00Z`);
-  }
-  throw new Error('此时区没有这个时刻，请检查夏令时切换。');
-}
+export { localTimeZone, zonedInput, zonedTimestamp };
 export type EventDraft = {
   id: string; title: string; kind: PlannerEvent['kind']; location: string;
   start: string; end: string; allDay: boolean; timeZone: string; linkedWorkRecordId?: string;
+  source?: 'manual' | 'trip' | 'hdu'; sourceId?: string;
 };
 export function buildEvent(draft: EventDraft): PlannerEvent {
   return eventSchema.parse({ ...draft,
     start: zonedTimestamp(draft.allDay ? `${draft.start.slice(0, 10)}T00:00` : draft.start, draft.timeZone),
     end: zonedTimestamp(draft.allDay ? `${shiftDate(draft.end.slice(0, 10), 1)}T00:00` : draft.end, draft.timeZone),
-    source: 'manual', sourceId: '',
+    source: draft.source ?? 'manual', sourceId: draft.sourceId ?? '',
   });
 }
 export function expandCourse(input: CourseRule, from: string, to: string): PlannerEvent[] {
@@ -69,7 +54,7 @@ export function buildTimeline(state: PlannerState, records: readonly RecordEntry
     inputs.push({ ...e,
       start: e.allDay ? new Date(`${zonedInput(e.start, e.timeZone).slice(0, 10)}T00:00:00`).getTime() : e.start,
       end: e.allDay ? new Date(`${zonedInput(e.end, e.timeZone).slice(0, 10)}T00:00:00`).getTime() : e.end,
-      eventId: e.source === 'calendar' ? undefined : e.id, calendarEvent: e.source === 'calendar' ? e : undefined, sourceLabel: e.source === 'calendar' ? '手机日历' : e.source === 'ics' ? 'ICS导入' : '手动日程' });
+      eventId: e.source === 'calendar' ? undefined : e.id, calendarEvent: e.source === 'calendar' ? e : undefined, sourceLabel: e.source === 'calendar' ? '手机日历' : e.source === 'ics' ? 'ICS导入' : e.source === 'trip' ? '旅记' : e.source === 'hdu' ? '杭电助手' : '手动日程' });
   }
   for (const rule of state.courseRules) {
     for (const e of expandCourse(rule, from, to)) inputs.push({ ...e, courseId: rule.id, courseDate: rule.exceptions.find((x) => x.replacement?.id === e.id)?.date ?? zonedInput(e.start, rule.timeZone).slice(0, 10), sourceLabel: '课程规则' });

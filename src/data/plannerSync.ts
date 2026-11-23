@@ -25,6 +25,7 @@ export function createGatewayPlannerTransport(): PlannerTransport {
     if (!token || gatewayUrl() !== base || gatewayToken() !== token) throw new PlannerSyncError('连接已改变，请重新同步；不会向其他服务器发送旧操作。', 'server_changed');
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${token}`);
+    if (/\/functions\/v1\/app$/.test(base)) headers.set('X-Shunshou-Session', token);
     const response = await fetch(`${base}${path}`, { ...init, headers, redirect: 'error', signal: AbortSignal.timeout(10000) });
     if (gatewayUrl() !== base || gatewayToken() !== token) throw new PlannerSyncError('连接已改变，旧请求确认保留至重新连接后处理。', 'server_changed');
     return responseBody(response);

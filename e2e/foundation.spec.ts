@@ -5,7 +5,7 @@ test('desktop navigation, filters, empty week and preview boundaries', async ({ 
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('把这一周，过得心里有数。');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('今天，顺手就好。');
   await page.screenshot({ path: 'test-results/desktop-home.png', fullPage: true });
   await page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '周账单' }).click();
   await expect(page.getByRole('main')).toBeFocused();
@@ -67,7 +67,7 @@ test('mobile pages fit 375px and navigation stays usable', async ({ page }) => {
   }
   const nav = page.getByRole('navigation', { name: '主导航' });
   await nav.getByRole('link', { name: '今天', exact: true }).click();
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/today');
   const positions = await page.evaluate(() => ({ headingTop: document.querySelector('h1')!.getBoundingClientRect().top, navBottom: document.querySelector('.sidebar')!.getBoundingClientRect().bottom }));
   expect(positions.headingTop).toBeGreaterThanOrEqual(positions.navBottom);
   await page.screenshot({ path: 'test-results/mobile-home.png', fullPage: true });

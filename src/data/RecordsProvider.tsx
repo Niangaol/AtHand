@@ -5,7 +5,7 @@ import { useLocalToday } from './useLocalToday';
 import { buildRecord, buildWorkplace, parseAmount } from '../domain/ledger';
 import type { RecordDraft } from '../domain/ledger';
 import type { LedgerState, RecordEntry } from '../domain/records';
-import { clearGatewaySession, gatewayFetch, isGatewayConnected } from './gateway';
+import { clearGatewayAccountChanged, clearGatewaySession, gatewayAccountChanged, gatewayFetch, isGatewayConnected } from './gateway';
 import { createInitialState, isLedgerState, loadLedger, saveLedger, STORAGE_KEY } from './storage';
 
 type Result = { ok: true } | { ok: false; message: string };
@@ -111,7 +111,8 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       updatedAtRef.current = body.updatedAt;
       pendingRef.current = false;
       writePending(false);
-      setRemote({ status: 'synced', message: '已同步到电脑。', updatedAt: body.updatedAt });
+      if (force) clearGatewayAccountChanged();
+      setRemote({ status: 'synced', message: '已同步到后端。', updatedAt: body.updatedAt });
       return { ok: true };
     } catch (reason) {
       pendingRef.current = true;
@@ -143,8 +144,17 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
         setRemote({ status: 'off', message: '登录已过期，请重新连接电脑。', updatedAt: null });
         return { ok: false, message: '登录已过期，请重新连接电脑。' };
       }
-      if (!response.ok || body?.ok !== true) throw new Error('读取电脑账本失败。');
+      if (!response.ok || body?.ok !== true) throw new Error('读取后端账本失败。');
       const updatedAt = typeof body.updatedAt === 'string' ? body.updatedAt : null;
+      if (gatewayAccountChanged()) {
+        pendingRef.current = false;
+        writePending(false);
+        const detail = body.ledger === null || body.ledger === undefined
+          ? '检测到切换账号；本机账本属于上一个账号，不会自动上传。请先导出备份，再用本机账本明确覆盖新账号，或重置本机账本。'
+          : '检测到切换账号；本机账本与当前账号的云端账本不会自动合并，请选择保留哪一份。';
+        setRemote({ status: 'conflict', message: detail, updatedAt });
+        return { ok: false, message: detail };
+      }
       if (body.ledger === null || body.ledger === undefined) {
         const pushed = await pushRemote(false);
         if (pushed.ok) setRemote({ status: 'synced', message: '已把本机账本上传到电脑。', updatedAt: updatedAtRef.current });
@@ -195,7 +205,8 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       updatedAtRef.current = typeof body.updatedAt === 'string' ? body.updatedAt : null;
       pendingRef.current = false;
       writePending(false);
-      setRemote({ status: 'synced', message: '已用电脑上的账本覆盖本机。', updatedAt: updatedAtRef.current });
+      clearGatewayAccountChanged();
+      setRemote({ status: 'synced', message: '已用云端账本覆盖本机。', updatedAt: updatedAtRef.current });
       return { ok: true };
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : '读取电脑账本失败。';

@@ -554,7 +554,7 @@ export function buildFocusInsights(state: PlannerState, today: string, days = 30
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/domain/insights.test.ts`
-Expected: PASS (7 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -651,7 +651,7 @@ export function weekReviewNarrative(facts: WeekReview): string {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/domain/insights.test.ts`
-Expected: PASS (9 tests)
+Expected: PASS (10 tests)
 
 - [ ] **Step 5: Commit**
 

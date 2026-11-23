@@ -53,6 +53,8 @@ class MainActivity : Activity() {
     private var updatingSwitch = false
 
     private val shizukuRequestCode = 1001
+    private val cameraRequestCode = 1002
+    private val scanRequestCode = 1003
     private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
         if (requestCode == shizukuRequestCode) runOnUiThread { renderDebugStatus() }
     }
@@ -102,7 +104,18 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == cameraRequestCode) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) launchScanner()
+            else toast("没有相机权限，无法扫码")
+        }
         renderAll()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == scanRequestCode && resultCode == RESULT_OK) {
+            data?.getStringExtra(ScanActivity.EXTRA_PAYLOAD)?.let(::handlePairing)
+        }
     }
 
     private fun configureWindow() {
@@ -150,6 +163,7 @@ class MainActivity : Activity() {
             togglePanel(panelDebug, buttonToggleDebug, "调试工具  ›", "收起调试工具")
         }
         findViewById<Button>(R.id.buttonSyncSamples).setOnClickListener { syncSamples() }
+        findViewById<Button>(R.id.buttonScanPair).setOnClickListener { requestScanPair() }
         findViewById<Button>(R.id.buttonTestConnection).setOnClickListener { testConnection() }
         findViewById<Button>(R.id.buttonSaveConnection).setOnClickListener { testConnection() }
         findViewById<Button>(R.id.buttonRefreshSamples).setOnClickListener { renderAll() }
@@ -417,16 +431,47 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun requestScanPair() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) launchScanner()
+        else requestPermissions(arrayOf(Manifest.permission.CAMERA), cameraRequestCode)
+    }
+
+    private fun launchScanner() {
+        runCatching { startActivityForResult(Intent(this, ScanActivity::class.java), scanRequestCode) }
+            .onFailure { toast("无法打开相机") }
+    }
+
+    private fun handlePairing(raw: String) {
+        val payload = PairingPayload.parse(raw)
+        if (payload == null) {
+            toast("二维码无效或已过期，请在电脑上刷新")
+            return
+        }
+        toast("正在配对…")
+        Thread {
+            val result = runCatching {
+                SyncClient.pair(payload.url, payload.code).also { SyncSession.savePaired(this, payload.url, it) }
+            }
+            runOnUiThread {
+                result.onSuccess {
+                    probePrefs.edit().putString("syncUrl", payload.url).apply()
+                    syncUrlInput.setText(payload.url)
+                    toast("配对成功，正在上传样本")
+                    syncSamples()
+                }.onFailure { toast("配对失败：${it.message}") }
+            }
+        }.start()
+    }
+
     private fun testConnection() {
         val url = savedSyncUrl()
         val password = savedSyncPassword()
-        if (password.isBlank()) {
-            toast("请先填访问口令")
-            return
-        }
         toast("正在测试…")
         Thread {
-            val result = runCatching { SyncClient.login(url, password) }
+            val result = runCatching {
+                val token = SyncSession.token(this@MainActivity, url, password)
+                SyncClient.samples(url, token)
+            }
             runOnUiThread {
                 result.onSuccess { toast("连接成功，可以同步样本") }
                     .onFailure { toast("连接失败：${it.message ?: "请检查地址和口令"}") }

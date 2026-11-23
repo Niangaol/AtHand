@@ -18,12 +18,24 @@ function renderApp(path = '/', records?: RecordEntry[]) {
 describe('application foundation', () => {
   it('labels the example data and provides every core page', () => {
     renderApp();
-    expect(screen.getByRole('heading', { name: '把这一周，过得心里有数。' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '今天，顺手就好。' })).toBeInTheDocument();
     expect(screen.getByText('示例模式')).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: '主导航' });
-    for (const name of ['今天', '记一笔', '周账单', '单位管理', '月度汇总', '校园', '设置']) {
+    for (const name of ['首页', '今天', '记一笔', '周账单', '单位管理', '月度汇总', '校园', '设置']) {
       expect(within(nav).getByRole('link', { name })).toBeInTheDocument();
     }
+  });
+  it('keeps the home assistant tucked away until asked', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    expect(screen.getByRole('navigation', { name: '核心入口' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('告诉助手要做什么')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /说一句/ }));
+    await user.type(screen.getByLabelText('告诉助手要做什么'), '今天有什么安排？');
+    await user.click(screen.getByRole('button', { name: '收起输入框' }));
+    expect(screen.queryByLabelText('告诉助手要做什么')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /说个安排/ }));
+    expect(screen.getByLabelText('告诉助手要做什么')).toHaveValue('帮我安排：');
   });
   it('filters expenses without leaking work records into the list', async () => {
     const user = userEvent.setup();
@@ -63,7 +75,7 @@ describe('application foundation', () => {
     expect(screen.getByRole('heading', { name: '图书馆' })).toBeInTheDocument();
   });
   it('renders empty data with zero totals', () => {
-    renderApp('/', []);
+    renderApp('/today', []);
     expect(screen.getByTestId('week-net')).toHaveTextContent('0.00');
     expect(screen.getByText('这一页，还是空白的')).toBeInTheDocument();
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
@@ -72,6 +84,6 @@ describe('application foundation', () => {
     const user = userEvent.setup();
     renderApp('/not-found');
     await user.click(screen.getByRole('link', { name: '回到今天' }));
-    expect(screen.getByRole('heading', { name: '把这一周，过得心里有数。' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '今天，顺手就好。' })).toBeInTheDocument();
   });
 });

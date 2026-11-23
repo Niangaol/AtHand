@@ -12,7 +12,7 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Response) {
   }));
 }
 const login = (url: string) => url.endsWith('/api/login') ? reply({ ok: true, token: 'session-token', expiresAt: Date.now() + 3600_000 }) : null;
-const settings = { ok: true, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen', hasApiKey: true, updatedAt: '2026-11-21T03:00:00.000Z' };
+const settings = { ok: true, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen', hasApiKey: true, privacyMode: 'redact', updatedAt: '2026-11-21T03:00:00.000Z' };
 
 beforeEach(() => { localStorage.clear(); requests.length = 0; });
 afterEach(() => { vi.unstubAllGlobals(); });

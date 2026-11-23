@@ -1,8 +1,13 @@
-export type GatewaySession = { url: string; token: string; expiresAt: number };
+export type GatewayUser = { id: string; username: string };
+export type GatewaySession = { url: string; token: string; expiresAt: number; user?: GatewayUser };
+export type GatewayPairingCode = { code: string; expiresAt: number; urls: Array<{ label: string; url: string }> };
 
 const URL_KEY = 'shunshou.gateway.url';
 const TOKEN_KEY = 'shunshou.gateway.token';
 const EXPIRES_KEY = 'shunshou.gateway.expiresAt';
+const USERNAME_KEY = 'shunshou.gateway.username';
+const LAST_USER_KEY = 'shunshou.gateway.lastUsername';
+const ACCOUNT_CHANGED_KEY = 'shunshou.gateway.accountChanged';
 
 export class GatewayError extends Error {
   code: string;
@@ -42,6 +47,23 @@ export function gatewayUrl(): string {
   }
 }
 
+export function isHostedSite(): boolean {
+  try {
+    const { protocol, hostname } = window.location;
+    if (protocol !== 'http:' && protocol !== 'https:') return false;
+    return /(^|\.)qoder\.(zone|site)$/.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function defaultGatewayUrl(): string {
+  const stored = gatewayUrl();
+  if (stored) return stored;
+  if (!isHostedSite()) return '';
+  return `${window.location.origin}/functions/v1/app`;
+}
+
 export function gatewayToken(): string {
   const token = read(TOKEN_KEY);
   const expiresAt = Number(read(EXPIRES_KEY));
@@ -54,41 +76,104 @@ export function gatewayExpiresAt(): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+export function gatewayUsername(): string {
+  return read(USERNAME_KEY);
+}
+
 export function isGatewayConnected(): boolean {
   return Boolean(gatewayToken());
+}
+
+export function gatewayAccountChanged(): boolean {
+  return read(ACCOUNT_CHANGED_KEY) === '1';
+}
+
+export function clearGatewayAccountChanged(): void {
+  write(ACCOUNT_CHANGED_KEY, '0');
 }
 
 export function clearGatewaySession(): void {
   write(TOKEN_KEY, null);
   write(EXPIRES_KEY, null);
+  write(USERNAME_KEY, null);
 }
 
-export async function gatewayLogin(url: string, password: string): Promise<GatewaySession> {
+function applySession(base: string, body: Record<string, unknown>, fallbackUsername = ''): GatewaySession {
+  const rawUser = body.user && typeof body.user === 'object' ? body.user as { id?: unknown; username?: unknown } : null;
+  const username = typeof rawUser?.username === 'string' ? rawUser.username : fallbackUsername;
+  const previous = read(LAST_USER_KEY);
+  write(ACCOUNT_CHANGED_KEY, previous && (!username || previous.toLowerCase() !== username.toLowerCase()) ? '1' : '0');
+  const session: GatewaySession = { url: base, token: body.token as string, expiresAt: Number(body.expiresAt) };
+  if (username) session.user = { id: typeof rawUser?.id === 'string' ? rawUser.id : '', username };
+  write(URL_KEY, base);
+  write(TOKEN_KEY, session.token);
+  write(EXPIRES_KEY, String(session.expiresAt));
+  if (username) {
+    write(USERNAME_KEY, username);
+    write(LAST_USER_KEY, username);
+  } else {
+    write(USERNAME_KEY, null);
+  }
+  window.dispatchEvent(new Event('shunshou-gateway-change'));
+  return session;
+}
+
+export async function gatewayLogin(url: string, password: string, username = ''): Promise<GatewaySession> {
   const base = normalizeGatewayUrl(url);
-  if (password.length < 8) throw new GatewayError('访问口令至少 8 个字符。', 'invalid_input');
+  if (password.length < 8) throw new GatewayError('密码至少 8 个字符。', 'invalid_input');
   let response: Response;
   try {
     response = await fetch(`${base}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify(username ? { username, password } : { password }),
       credentials: 'same-origin',
     });
   } catch {
-    throw new GatewayError('连不上电脑，请确认同步服务已启动、地址正确。', 'network');
+    throw new GatewayError('连不上后端，请检查地址和服务是否正常。', 'network');
   }
-  const body = (await response.json().catch(() => null)) as { ok?: unknown; token?: unknown; expiresAt?: unknown } | null;
+  const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok || body?.ok !== true || typeof body.token !== 'string' || !Number.isFinite(Number(body.expiresAt))) {
-    if (response.status === 401) throw new GatewayError('访问口令不对。', 'unauthorized');
-    if (response.status === 429) throw new GatewayError('尝试次数过多，请 10 分钟后再试。', 'too_many_attempts');
-    throw new GatewayError('电脑上的服务返回异常。', 'invalid_response');
+    if (response.status === 401) throw new GatewayError(username ? '账号或密码不对。' : '口令不对。', 'unauthorized');
+    if (response.status === 429) throw new GatewayError('尝试次数过多，请稍后再试。', 'too_many_attempts');
+    const message = typeof body?.message === 'string' ? body.message : '后端返回异常。';
+    throw new GatewayError(message, 'invalid_response');
   }
-  const session = { url: base, token: body.token, expiresAt: Number(body.expiresAt) };
-  write(URL_KEY, base);
-  write(TOKEN_KEY, session.token);
-  write(EXPIRES_KEY, String(session.expiresAt));
-  window.dispatchEvent(new Event('shunshou-gateway-change'));
-  return session;
+  return applySession(base, body, username);
+}
+
+export async function gatewayRegister(url: string, username: string, password: string): Promise<GatewaySession> {
+  const base = normalizeGatewayUrl(url);
+  if (!username.trim()) throw new GatewayError('请填写账号。', 'invalid_input');
+  if (password.length < 8) throw new GatewayError('密码至少 8 个字符。', 'invalid_input');
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim(), password }),
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new GatewayError('连不上后端，请检查地址和服务是否正常。', 'network');
+  }
+  const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok || body?.ok !== true || typeof body.token !== 'string' || !Number.isFinite(Number(body.expiresAt))) {
+    if (response.status === 409) throw new GatewayError('这个账号已经被使用。', 'username_taken');
+    const message = typeof body?.message === 'string' ? body.message : '注册失败。';
+    throw new GatewayError(message, typeof body?.error === 'string' ? body.error : 'register_failed');
+  }
+  return applySession(base, body, username.trim());
+}
+
+export async function gatewayMe(): Promise<GatewayUser | null> {
+  const response = await gatewayFetch('/api/me');
+  const body = (await response.json().catch(() => null)) as { ok?: unknown; user?: unknown } | null;
+  if (!response.ok || body?.ok !== true || !body.user || typeof body.user !== 'object') return null;
+  const user = body.user as { id?: unknown; username?: unknown };
+  if (typeof user.id !== 'string' || typeof user.username !== 'string') return null;
+  write(USERNAME_KEY, user.username);
+  return { id: user.id, username: user.username };
 }
 
 export async function gatewayLogout(): Promise<void> {
@@ -97,19 +182,43 @@ export async function gatewayLogout(): Promise<void> {
   clearGatewaySession();
   if (!token) return;
   try {
-    await fetch(`${base}/api/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-  } catch { /* 电脑离线时也允许本机退出。 */ }
+    await fetch(`${base}/api/logout`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(/\/functions\/v1\/app$/.test(base) ? { 'X-Shunshou-Session': token } : {}),
+      },
+    });
+  } catch { /* 后端离线时也允许本机退出。 */ }
+}
+
+export async function createPairingCode(): Promise<GatewayPairingCode> {
+  const response = await gatewayFetch('/api/pair/code', { method: 'POST' });
+  const body = (await response.json().catch(() => null)) as
+    { ok?: unknown; code?: unknown; expiresAt?: unknown; urls?: unknown } | null;
+  if (!response.ok || body?.ok !== true || typeof body.code !== 'string' || !Number.isFinite(Number(body.expiresAt))) {
+    if (response.status === 403) throw new GatewayError('这个网页地址不在网关允许的来源里，请检查 ALLOWED_ORIGINS。', 'origin_denied');
+    throw new GatewayError('后端没有生成配对码，请重试。', 'invalid_response');
+  }
+  const urls = Array.isArray(body.urls)
+    ? body.urls
+      .filter((item): item is { label?: unknown; url?: unknown } => Boolean(item) && typeof item === 'object')
+      .map((item) => ({ label: typeof item.label === 'string' ? item.label : '局域网', url: typeof item.url === 'string' ? item.url : '' }))
+      .filter((item) => /^https?:\/\//.test(item.url))
+    : [];
+  return { code: body.code, expiresAt: Number(body.expiresAt), urls };
 }
 
 export async function gatewayFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const base = gatewayUrl();
   const token = gatewayToken();
-  if (!token) throw new GatewayError('还没有连接电脑。', 'not_connected');
+  if (!token) throw new GatewayError('还没有连接后端。', 'not_connected');
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${token}`);
+  if (/\/functions\/v1\/app$/.test(base)) headers.set('X-Shunshou-Session', token);
   try {
     return await fetch(`${base}${path}`, { ...init, headers });
   } catch {
-    throw new GatewayError('连不上电脑，请检查网络或服务是否在运行。', 'network');
+    throw new GatewayError('连不上后端，请检查网络或服务是否在运行。', 'network');
   }
 }

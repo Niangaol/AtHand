@@ -1,0 +1,25 @@
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--no-first-run'] });
+  const ctx = await browser.newContext({ locale: 'zh-CN', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36 Edg/157.0.0.0' });
+  const page = await ctx.newPage();
+  const out = {};
+  await page.goto('https://tianchi.aliyun.com/forum/post/1105622', { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForTimeout(8000);
+  const txt = await page.evaluate(() => document.body.innerText);
+  out.url = page.url();
+  out.len = txt.length;
+  out.hasLink = txt.includes('athand-qnvq63y722x.qoder.zone');
+  out.hasIntro = txt.includes('自我介绍');
+  out.hasWhy = txt.includes('为什么做');
+  out.hasHow = txt.includes('怎么用');
+  out.head = txt.slice(0, 300);
+  const imgs = await page.evaluate(() => Array.from(document.images).map(i => ({ src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight })).filter(i => /userimg/.test(i.src)));
+  out.imgs = imgs;
+  out.imgLoaded = imgs.filter(i => i.w > 50).length;
+  const title = await page.title();
+  out.title = title;
+  await page.screenshot({ path: 'D:/AgentPrograms/AtHand/参赛材料-Qoder大赛/_anon_post.png', fullPage: false });
+  console.log(JSON.stringify(out, null, 1));
+  await browser.close();
+})().catch(e => { console.log('ERR', e.message); process.exit(1); });

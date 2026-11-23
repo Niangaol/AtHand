@@ -1,0 +1,26 @@
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ channel: 'msedge', headless: true });
+  const ctx = await b.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } });
+  const p = await ctx.newPage();
+  const net = [];
+  p.on('response', async r => { if (r.url().includes('/functions/')) net.push(r.status() + ' ' + r.url().slice(0, 90)); });
+  await p.goto('https://athand-qnvq63y722x.qoder.zone/register', { waitUntil: 'networkidle', timeout: 60000 });
+  await p.waitForTimeout(1500);
+  const inputs = await p.evaluate(() => Array.from(document.querySelectorAll('input')).map(i => ({ name: i.name, type: i.type, ph: i.placeholder, id: i.id })));
+  console.log('inputs', JSON.stringify(inputs));
+  const user = p.locator('input').first();
+  const pw = p.locator('input[type="password"]').first();
+  await user.fill('judge_probe_1123');
+  await pw.fill('probe12345678');
+  const pw2 = p.locator('input[type="password"]').nth(1);
+  if (await pw2.count()) await pw2.fill('probe12345678');
+  await p.getByRole('button', { name: /注\s*册|创建/ }).first().click();
+  await p.waitForTimeout(6000);
+  const txt = await p.evaluate(() => document.body.innerText);
+  console.log('url', p.url());
+  console.log('net', JSON.stringify(net));
+  console.log('txt', txt.slice(0, 600).replace(/\n+/g, ' | '));
+  await p.screenshot({ path: 'D:/AgentPrograms/AtHand/参赛材料-Qoder大赛/截图/_probe_register.png' });
+  await b.close();
+})().catch(e => { console.log('ERR', e.message); process.exit(1); });

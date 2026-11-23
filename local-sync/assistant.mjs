@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { createRedactor, normalizePrivacyMode } from './privacy.mjs';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1';
 const TIMEOUT_MS = 90_000;
@@ -32,6 +33,7 @@ function normalizeSettings(value) {
     baseUrl: normalizeBaseUrl(value?.baseUrl),
     model: typeof value?.model === 'string' ? value.model.trim().slice(0, 200) : '',
     apiKey: typeof value?.apiKey === 'string' ? value.apiKey.trim().slice(0, 500) : '',
+    privacyMode: normalizePrivacyMode(value?.privacyMode),
     updatedAt: typeof value?.updatedAt === 'string' ? value.updatedAt : null,
   };
 }
@@ -43,7 +45,7 @@ function isLoopback(baseUrl) {
   } catch { return false; }
 }
 
-function systemPrompt() {
+function systemPrompt(redacting) {
   const now = new Date();
   const stamp = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'full', timeStyle: 'short', hour12: false }).format(now);
   const offset = -now.getTimezoneOffset();
@@ -59,10 +61,11 @@ function systemPrompt() {
     '3. 安全写操作可以直接执行：新建/修改日程、记支出/工时、开始或控制专注、新建/修改倒计时、新建/修改课程、旅记和打包清单。',
     '4. 你没有删除工具。用户要删除日程、记录、单位、课程、倒计时或旅记时，告诉用户到对应页面删除。',
     '5. 账本金额参数用元（amountYuan、hourlyRateYuan）；工具返回的 amountCents 是分，回答时除以 100。',
-    '6. 校园服务只读；不要编造政策、材料、地点，也不要替用户提交、签字或付款。',
+    '6. 校园数据先连接杭电助手，个人数据需用户开启只读；同步课表/考试只新增或更新 hdu: 条目，不删除，删除仍去日程页。不要编造政策、材料、地点，也不要替用户提交、签字或付款。',
     '7. 日期、金额、单位不明确时先问一句，不要猜。',
     '8. 工具失败就如实说明，同一个失败调用不要反复尝试。',
     '9. 回答用简体中文，先给结果，再给必要细节；不要向用户输出工具调用的 JSON。',
+    ...(redacting ? ['10. 个人数据已用 [[类别:哈希]] 占位符替换；必须原样保留这些占位符，不要猜测、翻译或改写。调用工具时参数可以直接使用占位符，本机执行前会还原。'] : []),
   ].join('\n');
 }
 
@@ -95,6 +98,13 @@ function summarizeTool(name, result) {
   if (name === 'trips_add_day_item' || name === 'trips_add_packing') return result.item?.text ?? '';
   if (name === 'trips_add_visit') return result.visit?.city ?? '';
   if (name === 'services_search') return `${result.items?.length ?? 0} 条服务`;
+  if (name === 'campus_notices') return `${result.data?.items?.length ?? 0} 条通知`;
+  if (name === 'campus_courses') return `${result.data?.courses?.length ?? 0} 条课表记录`;
+  if (name === 'campus_exams') return `${result.data?.exams?.length ?? 0} 场考试`;
+  if (name === 'campus_calendar') return result.data?.weekNow ? `第 ${result.data.weekNow} 周` : '校历';
+  if (name === 'campus_life') return '饭卡、电费、图书馆';
+  if (name === 'campus_sync_courses' || name === 'campus_sync_exams') return `写入 ${result.written ?? 0} 条`;
+  if (name === 'campus_status') return result.connected ? '杭电助手已连接' : '杭电助手未连接';
   return '';
 }
 
@@ -121,18 +131,19 @@ export function createAssistant({ directory, getTools, callTool }) {
   }
   function publicSettings() {
     const settings = readSettings();
-    return { baseUrl: settings.baseUrl, model: settings.model, hasApiKey: Boolean(settings.apiKey), updatedAt: settings.updatedAt };
+    return { baseUrl: settings.baseUrl, model: settings.model, hasApiKey: Boolean(settings.apiKey), privacyMode: settings.privacyMode, updatedAt: settings.updatedAt };
   }
   function updateSettings(input) {
     const current = readSettings();
     const baseUrl = input?.baseUrl !== undefined ? normalizeBaseUrl(input.baseUrl) : current.baseUrl;
     const model = input?.model !== undefined ? String(input.model).trim().slice(0, 200) : current.model;
+    const privacyMode = input?.privacyMode !== undefined ? normalizePrivacyMode(input.privacyMode) : current.privacyMode;
     let apiKey = current.apiKey;
     if (input?.clearApiKey === true) apiKey = '';
     else if (typeof input?.apiKey === 'string' && input.apiKey.trim()) apiKey = input.apiKey.trim().slice(0, 500);
-    const next = { baseUrl, model, apiKey, updatedAt: new Date().toISOString() };
+    const next = { baseUrl, model, apiKey, privacyMode, updatedAt: new Date().toISOString() };
     writeSettings(next);
-    return { baseUrl, model, hasApiKey: Boolean(apiKey), updatedAt: next.updatedAt };
+    return { baseUrl, model, hasApiKey: Boolean(apiKey), privacyMode, updatedAt: next.updatedAt };
   }
 
   async function providerFetch(settings, pathName, init = {}) {
@@ -182,9 +193,17 @@ export function createAssistant({ directory, getTools, callTool }) {
   async function chat(history) {
     const settings = readSettings();
     if (!settings.model) throw new AssistantError(409, 'provider_not_configured', '还没有配置模型。请先到设置里填写模型地址和名称。');
-    const messages = [{ role: 'system', content: systemPrompt() }, ...cleanMessages(history)];
-    const tools = getTools().map((tool) => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.input } }));
     const loopback = isLoopback(settings.baseUrl);
+    if (!loopback && settings.privacyMode === 'local-only') {
+      throw new AssistantError(409, 'privacy_local_only', '当前是“只在本机”隐私模式，但模型地址不是本机。请改用本机 Ollama，或把隐私模式改为“云端脱敏”。');
+    }
+    const redacting = !loopback && settings.privacyMode === 'redact';
+    const redactor = redacting ? createRedactor() : null;
+    const messages = [
+      { role: 'system', content: systemPrompt(redacting) },
+      ...cleanMessages(history).map((message) => redacting ? { ...message, content: redactor.redactText(message.content) } : message),
+    ];
+    const tools = (await getTools()).map((tool) => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.input } }));
     const trace = [];
     let lastContent = '';
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -199,14 +218,15 @@ export function createAssistant({ directory, getTools, callTool }) {
       messages.push({ role: 'assistant', content: content || null, tool_calls: calls });
       for (const call of calls) {
         const name = call?.function?.name;
-        let args = {};
+        let requested = {};
         let parseError = '';
         try {
           const raw = call?.function?.arguments;
-          args = typeof raw === 'string' ? (raw.trim() ? JSON.parse(raw) : {}) : (raw ?? {});
+          requested = typeof raw === 'string' ? (raw.trim() ? JSON.parse(raw) : {}) : (raw ?? {});
         } catch {
           parseError = '工具参数不是有效 JSON。';
         }
+        const args = redacting && !parseError ? redactor.rehydrateValue(requested) : requested;
         const result = parseError
           ? { ok: false, error: 'invalid_arguments', message: parseError }
           : await callTool({ tool: name, args, requestId: `assistant-${call.id}`.slice(0, 100) });
@@ -217,10 +237,12 @@ export function createAssistant({ directory, getTools, callTool }) {
         const toolContent = result.ok
           ? { ok: true, result: result.result }
           : { ok: false, error: result.error, message: result.message };
-        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(toolContent).slice(0, MAX_TOOL_RESULT) });
+        const protectedContent = redacting ? redactor.redactValue(toolContent) : toolContent;
+        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(protectedContent).slice(0, MAX_TOOL_RESULT) });
       }
     }
-    return { reply: lastContent || (trace.length ? '已经执行完这些操作。' : '模型没有返回内容，请再试一次。'), trace };
+    const reply = lastContent || (trace.length ? '已经执行完这些操作。' : '模型没有返回内容，请再试一次。');
+    return { reply: redacting ? redactor.rehydrateText(reply) : reply, trace };
   }
 
   return { publicSettings, updateSettings, test, chat };

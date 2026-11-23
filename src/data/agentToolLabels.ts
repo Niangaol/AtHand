@@ -13,6 +13,14 @@ export const agentToolLabels: Record<string, string> = {
   countdowns_create: '新建倒计时',
   countdowns_update: '修改倒计时',
   services_search: '搜索校园服务',
+  campus_status: '查看校园连接',
+  campus_calendar: '查看校历',
+  campus_notices: '查看校园通知',
+  campus_courses: '查看课表',
+  campus_exams: '查看考试',
+  campus_life: '查看校园生活数据',
+  campus_sync_courses: '同步课表到日程',
+  campus_sync_exams: '同步考试到日程',
   ledger_summary: '账本摘要',
   ledger_records: '账本明细',
   ledger_monthly: '月度汇总',
@@ -33,6 +41,26 @@ export const agentToolLabels: Record<string, string> = {
   trips_add_visit: '添加城市足迹',
 };
 
+// 生活服务 MCP 的工具名是「服务前缀_上游工具名」，这里只翻译服务前缀，
+// 上游工具名保留原样，避免把不认识的英文工具硬翻成错误的中文。
+const mcpServiceLabels: Record<string, string> = {
+  amap: '高德地图',
+  weather: '天气',
+  fliggy: '飞猪',
+  variflight: '飞常准',
+  kd100: '快递100',
+  didi: '滴滴',
+  luckin: '瑞幸',
+  mcd: '麦当劳',
+};
+
 export function toolLabel(name: string): string {
-  return agentToolLabels[name] ?? name;
+  const fixed = agentToolLabels[name];
+  if (fixed) return fixed;
+  const index = name.indexOf('_');
+  if (index > 0) {
+    const service = mcpServiceLabels[name.slice(0, index)];
+    if (service) return `${service} · ${name.slice(index + 1)}`;
+  }
+  return name;
 }
