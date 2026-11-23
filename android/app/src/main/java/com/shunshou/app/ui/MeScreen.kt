@@ -16,11 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.shunshou.app.data.AppUiState
 import com.shunshou.app.ui.components.PageHeader
 import com.shunshou.app.ui.components.RuleLine
@@ -40,10 +42,15 @@ import com.shunshou.app.ui.theme.Type
 fun MeScreen(state: AppUiState, onSignOut: () -> Unit, onRefresh: () -> Unit) {
     val context = LocalContext.current
     var confirmSignOut by remember { mutableStateOf(false) }
-    val captureOn = remember {
-        // 只读系统设置判断采集服务是否开启，不改动旧采集类。
-        Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-            ?.contains(context.packageName + "/.PaymentAccessibilityService") == true
+    var captureOn by remember { mutableStateOf(readCaptureEnabled(context)) }
+    // 从系统设置返回时重新读一次，否则会一直显示离开前的旧状态。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) captureOn = readCaptureEnabled(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Column(Modifier.fillMaxSize().background(Paper.page).verticalScroll(rememberScrollState())) {
@@ -106,4 +113,21 @@ private fun SettingRow(
             Text(subtitle, style = Type.caption)
         }
     }
+}
+
+/**
+ * 无障碍服务是否已开启。系统写回的是 flattenToString 的全名形式
+ * （pkg/pkg.PaymentAccessibilityService），但有些 ROM 用短名（pkg/.X），两种都要认。
+ */
+private fun readCaptureEnabled(context: android.content.Context): Boolean {
+    val enabled = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+    ) ?: return false
+    val pkg = context.packageName
+    val names = listOf(
+        "$pkg/$pkg.PaymentAccessibilityService",
+        "$pkg/.PaymentAccessibilityService",
+    )
+    return enabled.split(':').any { entry -> names.any { it.equals(entry, ignoreCase = true) } }
 }
