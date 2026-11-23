@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowUpRight, CalendarDays, Check, MessageSquare, MessageSquarePlus, NotebookPen, Send, Timer, X } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Check, MessageSquare, MessageSquarePlus, NotebookPen, RefreshCw, Send, Sparkles, Timer, X } from 'lucide-react';
+import '../../styles/home-brief.css';
 import { useRecords } from '../../data/RecordsProvider';
 import { usePlanner } from '../../data/PlannerProvider';
 import { useCalendar } from '../../data/CalendarProvider';
@@ -19,6 +20,7 @@ import { nextTrip, tripCountdown } from '../../domain/tripPlan';
 import { useCampus } from '../../data/CampusProvider';
 import { courseWhen, nextCourse } from '../campus/campusSummary';
 import { money, summarize } from '../../domain/summary';
+import { useBriefing } from '../../data/useBriefing';
 
 const sourceLabels: Record<ActivityItem['source'], string> = { assistant: '电脑', focus: '专注', ledger: '账本' };
 
@@ -42,6 +44,7 @@ export function HomePage() {
   const focusMinutes = Math.floor(planner.focusSessions
     .filter((session) => toDateKey(new Date(session.startedAt)) === today)
     .reduce((total, session) => total + focusedSeconds(session, Date.now()), 0) / 60);
+  const brief = useBriefing({ scope: 'day', state: planner, records, calendars: sources, today });
 
   const [audit, setAudit] = useState<AgentAuditEntry[]>([]);
   const [auditState, setAuditState] = useState<'off' | 'loading' | 'ready' | 'error'>(connected ? 'loading' : 'off');
@@ -136,6 +139,27 @@ export function HomePage() {
         <div><dt>下一节</dt><dd>{campusStatus?.connected ? (campusCourse ? `${campusCourse.name} · ${courseWhen(campusCourse)}` : '课表还没有数据') : '未连接校园'}</dd></div>
       </dl>
     </header>
+
+    <section className="home-brief" aria-label="今日简报">
+      <div className="home-brief-head">
+        <span className="home-kicker"><Sparkles size={13} strokeWidth={1.7} /> 今日简报</span>
+        <div className="home-brief-actions">
+          {brief.degraded ? <span className="home-brief-tag">规则版</span> : null}
+          <button type="button" className="text-link" onClick={() => void brief.refresh()} disabled={brief.loading}>
+            <RefreshCw size={13} />{brief.loading ? '更新中' : '刷新'}
+          </button>
+        </div>
+      </div>
+      <p className="home-brief-copy">{brief.narrative}</p>
+      <div className="home-brief-chips">
+        <span>{brief.facts.items.length} 件安排</span>
+        <span>支出 ¥ {money(brief.facts.expenseCents)}</span>
+        <span>专注 {brief.facts.focusMinutes} 分钟</span>
+        {brief.facts.countdowns[0] ? <span>{brief.facts.countdowns[0].title} · {brief.facts.countdowns[0].days} 天</span> : null}
+      </div>
+      {brief.warning ? <p className="form-hint">{brief.warning}</p> : null}
+      {brief.error ? <p className="form-hint">{brief.error}</p> : null}
+    </section>
 
     {!askOpen ? <button type="button" className="home-ask" aria-expanded="false" aria-controls="home-assistant" onClick={() => openAsk()}>
       <span className="home-ask-mark"><MessageSquare size={17} strokeWidth={1.7} /></span>
