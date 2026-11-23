@@ -152,3 +152,48 @@ test('the AI assistant configures a model and operates schedule, ledger and refu
   await expect(input).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+// 云端后端返回的 planner 文档必须通过 remoteDocumentSchema（strict），不能多带 ok 字段。
+const cloudPlannerState = {
+  version: 1, events: [], courseRules: [], focusSessions: [], countdowns: [], trips: [], serviceEntries: [],
+  preferences: { focusMinutes: 25 }, reminderReceipts: [],
+};
+
+test('cloud mode exposes the assistant with a site-managed model', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('shunshou.gateway.url', 'https://demo.qoder.zone/functions/v1/app');
+    localStorage.setItem('shunshou.gateway.token', 'cloud-token');
+    localStorage.setItem('shunshou.gateway.expiresAt', String(Date.now() + 3600_000));
+    localStorage.setItem('shunshou.gateway.username', '甲');
+  });
+  // 云端域名不真出网：先给整个云端口径兜底，再按路径覆盖本用例关心的接口。
+  await page.route('https://demo.qoder.zone/**', (route) => route.fulfill({ status: 404, json: { ok: false, error: 'not_mocked' } }));
+  const chatUrls: string[] = [];
+  await page.route('**/api/assistant/settings', (route) => route.fulfill({
+    json: { ok: true, baseUrl: 'https://api.test/v1', model: 'm1', hasApiKey: true, privacyMode: 'redact', updatedAt: null, managedBy: 'site' },
+  }));
+  await page.route('**/api/assistant/chat', (route) => {
+    chatUrls.push(route.request().url());
+    return route.fulfill({ json: { ok: true, reply: '今天有两项安排。', trace: [] } });
+  });
+  await page.route('**/api/me', (route) => route.fulfill({ json: { ok: true, user: { id: 'u1', username: '甲' } } }));
+  await page.route('**/api/ledger', (route) => route.fulfill({
+    json: route.request().method() === 'GET'
+      ? { ok: true, ledger: null, updatedAt: null }
+      : { ok: true, updatedAt: '2026-11-23T00:00:00.000Z' },
+  }));
+  await page.route('**/api/planner', (route) => route.fulfill({
+    json: { state: cloudPlannerState, revision: 0, serverId: 'cloud-e2e', entityVersions: {} },
+  }));
+
+  await page.goto('/assistant');
+  await expect(page.getByText('云端账号暂不运行助手')).toHaveCount(0);
+  await expect(page.getByText('云端已登录')).toBeVisible();
+  await expect(page.getByText('模型 · m1')).toBeVisible();
+  const input = page.getByLabel('告诉助手要做什么');
+  await expect(input).toBeVisible();
+  await input.fill('今天有什么安排');
+  await page.getByRole('button', { name: '发送' }).click();
+  await expect(page.getByText('今天有两项安排。')).toBeVisible();
+  expect(chatUrls).toEqual(['https://demo.qoder.zone/functions/v1/app/api/assistant/chat']);
+});
