@@ -46,6 +46,7 @@ data class PlannerSnapshot(
 
 object Models {
     private val VALID_SOURCES = setOf("demo", "manual", "school", "import")
+    private val EXPENSE_CATEGORIES = setOf("吃饭", "交通", "日用", "娱乐", "学习", "其他")
 
     private fun JSONArray.objects(): List<JSONObject> =
         (0 until length()).mapNotNull { optJSONObject(it) }
@@ -72,7 +73,8 @@ object Models {
             Workplace(
                 id = row.optString("id"), name = row.optString("name"),
                 hourlyRateCents = row.optLong("hourlyRateCents"),
-                description = row.optString("description"), source = row.optString("source", "manual"),
+                description = row.optString("description"),
+                source = row.optString("source").takeIf { it == "demo" || it == "manual" } ?: "manual",
             )
         }
         val settings = ledger.optJSONObject("settings")
@@ -82,6 +84,42 @@ object Models {
             version = ledger.optInt("version", 1), records = records, workplaces = workplaces,
             hourlyRateCents = if (rate > 0L) rate else 2000L,
         )
+    }
+
+    /**
+     * 网页端 isLedgerState 的等价校验。服务端 validLedger 很宽松，
+     * 不合规的记录能落库但会让网页整份拒收，所以写回前必须自己拦一遍。
+     */
+    fun ledgerProblems(state: LedgerState): List<String> {
+        val problems = mutableListOf<String>()
+        if (state.version != 1) problems += "账本版本必须是 1"
+        if (state.hourlyRateCents <= 0L) problems += "默认时薪必须大于 0"
+        val unitIds = state.workplaces.map { it.id }.toSet()
+        state.workplaces.forEach { unit ->
+            if (unit.id.isBlank()) problems += "单位缺少 id"
+            if (unit.name.isBlank()) problems += "单位「${unit.id}」缺少名称"
+            if (unit.hourlyRateCents <= 0L) problems += "单位「${unit.name}」时薪必须大于 0"
+            if (unit.source != "demo" && unit.source != "manual") problems += "单位「${unit.name}」来源非法"
+        }
+        state.records.forEach { record ->
+            if (record.id.isBlank()) problems += "记录缺少 id"
+            if (record.source !in VALID_SOURCES) problems += "记录「${record.title}」来源非法"
+            if (record.amountCents <= 0L) problems += "记录「${record.title}」金额必须大于 0"
+            if (record.type == "expense") {
+                if (record.category !in EXPENSE_CATEGORIES) problems += "记录「${record.title}」分类非法"
+            } else if (record.type == "work") {
+                val minutes = record.durationMinutes ?: 0
+                val rate = record.hourlyRateCents ?: 0L
+                if (record.workplaceId !in unitIds) problems += "记录「${record.title}」的单位不存在"
+                if (minutes <= 0 || minutes > 1440) problems += "记录「${record.title}」时长必须在 1-1440 分钟"
+                if (rate <= 0L) problems += "记录「${record.title}」时薪必须大于 0"
+                if (record.amountCents != (minutes.toLong() * rate + 30) / 60) problems += "记录「${record.title}」金额与时长×时薪不一致"
+            } else {
+                problems += "记录「${record.title}」类型非法"
+            }
+        }
+        if (state.records.map { it.id }.toSet().size != state.records.size) problems += "记录 id 有重复"
+        return problems
     }
 
     fun parsePlanner(body: JSONObject): PlannerSnapshot {

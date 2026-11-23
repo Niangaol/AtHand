@@ -34,7 +34,12 @@ class SessionStore(context: Context) {
     }
 
     fun clear() {
-        prefs.edit().remove(KEY_BASE).remove(KEY_TOKEN).remove(KEY_EXPIRES).remove(KEY_USERNAME).apply()
+        // 缓存必须一并清掉：否则换账号后 restore() 会把上一账号的账本恢复进内存，
+        // 下一次 PUT 就把它整份写进新账号。
+        prefs.edit()
+            .remove(KEY_BASE).remove(KEY_TOKEN).remove(KEY_EXPIRES).remove(KEY_USERNAME)
+            .remove("cache_ledger").remove("cache_planner").remove("cache_ledgerUpdatedAt")
+            .apply()
     }
 
     fun isValid(): Boolean {

@@ -3,6 +3,7 @@ package com.shunshou.app.data
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ModelsTest {
@@ -105,5 +106,70 @@ class ModelsTest {
                "workplaces":[],"settings":{"hourlyRateCents":2000}}}"""
         )
         assertEquals("manual", Models.parseLedger(body).records[0].source)
+    }
+
+    @Test
+    fun ledgerProblemsAcceptsValidWorkRecord() {
+        val state = LedgerState(
+            version = 1,
+            records = listOf(
+                RecordEntry(
+                    id = "w1", type = "work", date = "2026-11-23", title = "家教",
+                    amountCents = 9000, category = null, workplaceId = "u1",
+                    startTime = "14:00", endTime = "16:00", durationMinutes = 120,
+                    hourlyRateCents = 4500, source = "manual",
+                )
+            ),
+            workplaces = listOf(Workplace("u1", "家教", 4500, "", "manual")),
+            hourlyRateCents = 4500,
+        )
+        assertEquals(emptyList<String>(), Models.ledgerProblems(state))
+    }
+
+    @Test
+    fun ledgerProblemsRejectsAmountMismatch() {
+        val state = LedgerState(
+            version = 1,
+            records = listOf(
+                RecordEntry(
+                    id = "w1", type = "work", date = "2026-11-23", title = "家教",
+                    amountCents = 9999, category = null, workplaceId = "u1",
+                    startTime = "14:00", endTime = "16:00", durationMinutes = 120,
+                    hourlyRateCents = 4500, source = "manual",
+                )
+            ),
+            workplaces = listOf(Workplace("u1", "家教", 4500, "", "manual")),
+            hourlyRateCents = 4500,
+        )
+        assertTrue(Models.ledgerProblems(state).any { it.contains("金额与时长×时薪不一致") })
+    }
+
+    @Test
+    fun ledgerProblemsRejectsMissingWorkplace() {
+        val state = LedgerState(
+            version = 1,
+            records = listOf(
+                RecordEntry(
+                    id = "w1", type = "work", date = "2026-11-23", title = "家教",
+                    amountCents = 9000, category = null, workplaceId = "ghost",
+                    startTime = "14:00", endTime = "16:00", durationMinutes = 120,
+                    hourlyRateCents = 4500, source = "manual",
+                )
+            ),
+            workplaces = emptyList(),
+            hourlyRateCents = 2000,
+        )
+        assertTrue(Models.ledgerProblems(state).any { it.contains("单位不存在") })
+    }
+
+    @Test
+    fun normalizesWorkplaceSourceToManual() {
+        val body = JSONObject(
+            """{"ok":true,"ledger":{"version":1,"records":[],
+               "workplaces":[{"id":"u1","name":"家教","hourlyRateCents":4500,
+                              "description":"","source":"school"}],
+               "settings":{"hourlyRateCents":4500}}}"""
+        )
+        assertEquals("manual", Models.parseLedger(body).workplaces[0].source)
     }
 }
