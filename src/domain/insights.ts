@@ -3,7 +3,7 @@ import type { RecordEntry } from './records.ts';
 import { expenseCategories } from './records.ts';
 import { buildTimeline, scheduleWarnings, type CalendarSource } from './schedule.ts';
 import { getCountdowns } from './countdowns.ts';
-import { focusedSecondsBetween, remainingSeconds, type FocusSession } from './focus.ts';
+import { focusedSeconds, focusedSecondsBetween, remainingSeconds, type FocusSession } from './focus.ts';
 import { summarize } from './summary.ts';
 import { getWeekRange, shiftDate } from './dates.ts';
 
@@ -161,5 +161,66 @@ export function buildLedgerInsights(records: readonly RecordEntry[], today: stri
       title: item.title, amountCents: item.amountCents, date: item.date,
       reason: `单笔 ¥${(item.amountCents / 100).toFixed(2)}，超过日均的 3 倍`,
     })),
+  };
+}
+
+export type FocusInsights = {
+  days: number;
+  totalMinutes: number;
+  sessions: number;
+  completedSessions: number;
+  daily: { date: string; minutes: number }[];
+  averagePerActiveDayMinutes: number;
+  streakDays: number;
+  bestDay: { date: string; minutes: number } | null;
+  bySlot: { slot: '上午' | '下午' | '晚上' | '深夜'; minutes: number; share: number }[];
+  topTasks: { task: string; minutes: number }[];
+};
+
+const slotOf = (hour: number): FocusInsights['bySlot'][number]['slot'] =>
+  hour >= 5 && hour < 12 ? '上午' : hour >= 12 && hour < 18 ? '下午' : hour >= 18 && hour < 23 ? '晚上' : '深夜';
+
+export function buildFocusInsights(state: PlannerState, today: string, days = 30, now = Date.now()): FocusInsights {
+  const span = Math.min(90, Math.max(7, Math.round(days)));
+  const from = shiftDate(today, -(span - 1));
+  const sessions = state.focusSessions.filter((item) => item.status !== 'cancelled');
+  const daily = Array.from({ length: span }, (_, index) => {
+    const date = shiftDate(from, index);
+    const bounds = dayBounds(date);
+    return { date, minutes: Math.floor(focusedSecondsBetween(sessions, bounds.start, bounds.end, now) / 60) };
+  });
+  const windowStart = new Date(`${from}T00:00:00`).getTime();
+  const windowSessions = sessions.filter((item) => item.startedAt >= windowStart);
+  const totalMinutes = daily.reduce((sum, day) => sum + day.minutes, 0);
+  const activeDays = daily.filter((day) => day.minutes > 0);
+  let streak = 0;
+  for (let index = daily.length - 1; index >= 0; index--) {
+    if (daily[index].minutes <= 0) break;
+    streak += 1;
+  }
+  const slots = new Map<string, number>();
+  const tasks = new Map<string, number>();
+  for (const item of windowSessions) {
+    const minutes = Math.floor(focusedSeconds(item, now) / 60);
+    if (minutes <= 0) continue;
+    const slot = slotOf(new Date(item.segments[0].start).getHours());
+    slots.set(slot, (slots.get(slot) ?? 0) + minutes);
+    tasks.set(item.task, (tasks.get(item.task) ?? 0) + minutes);
+  }
+  const best = [...daily].sort((a, b) => b.minutes - a.minutes)[0];
+  return {
+    days: span,
+    totalMinutes,
+    sessions: windowSessions.length,
+    completedSessions: windowSessions.filter((item) => item.status === 'completed').length,
+    daily,
+    averagePerActiveDayMinutes: activeDays.length ? Math.round(totalMinutes / activeDays.length) : 0,
+    streakDays: streak,
+    bestDay: best && best.minutes > 0 ? best : null,
+    bySlot: (['上午', '下午', '晚上', '深夜'] as const).map((slot) => {
+      const minutes = slots.get(slot) ?? 0;
+      return { slot, minutes, share: totalMinutes ? Math.round((minutes / totalMinutes) * 100) : 0 };
+    }),
+    topTasks: [...tasks.entries()].map(([task, minutes]) => ({ task, minutes })).sort((a, b) => b.minutes - a.minutes).slice(0, 3),
   };
 }

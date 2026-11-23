@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPlannerState } from './planner.ts';
 import { buildEvent } from './schedule.ts';
-import { buildDayBrief, buildWeekReview, buildLedgerInsights } from './insights.ts';
+import { buildDayBrief, buildWeekReview, buildLedgerInsights, buildFocusInsights } from './insights.ts';
 import type { RecordEntry } from './records.ts';
 
 const at = (time: string) => new Date(`${time}+08:00`).getTime();
@@ -86,5 +86,37 @@ describe('buildLedgerInsights', () => {
     const facts = buildLedgerInsights([record({ amountCents: 1000 })], '2026-11-23', 7);
     expect(facts.previousExpenseCents).toBe(0);
     expect(facts.deltaPct).toBeNull();
+  });
+});
+
+function session(id: string, start: string, minutes: number, task = '复习') {
+  return {
+    id, task, minutes, startedAt: at(start), status: 'completed' as const,
+    segments: [{ start: at(start), end: at(start) + minutes * 60_000 }], owner: 'web', epoch: 1,
+  };
+}
+
+describe('buildFocusInsights', () => {
+  it('aggregates totals, streaks and time slots', () => {
+    const state = createPlannerState();
+    state.focusSessions.push(
+      session('f1', '2026-11-23T09:00', 50),
+      session('f2', '2026-11-23T20:00', 25, '英语'),
+      session('f3', '2026-11-22T14:00', 30),
+    );
+    const facts = buildFocusInsights(state, '2026-11-23', 7, at('2026-11-23T22:00'));
+    expect(facts.days).toBe(7);
+    expect(facts.totalMinutes).toBe(105);
+    expect(facts.sessions).toBe(3);
+    expect(facts.streakDays).toBe(2);
+    expect(facts.bestDay).toMatchObject({ date: '2026-11-23', minutes: 75 });
+    expect(facts.bySlot.find((slot) => slot.slot === '上午')?.minutes).toBe(50);
+    expect(facts.topTasks[0]).toEqual({ task: '复习', minutes: 80 });
+  });
+
+  it('handles no sessions', () => {
+    const facts = buildFocusInsights(createPlannerState(), '2026-11-23', 7, at('2026-11-23T22:00'));
+    expect(facts).toMatchObject({ totalMinutes: 0, sessions: 0, streakDays: 0, bestDay: null, topTasks: [] });
+    expect(facts.daily).toHaveLength(7);
   });
 });
