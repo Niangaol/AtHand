@@ -20,6 +20,7 @@ export { getMonthRange, getWeekRange, shiftDate, toDateKey } from '${resolve(roo
 export { changeTripDates, cities, newTrip } from '${resolve(root, 'src/domain/trips.ts').replace(/\\/g, '/')}';
 export { expenseCategories } from '${resolve(root, 'src/domain/records.ts').replace(/\\/g, '/')}';
 export { applyCommand, commandKey, createPlannerState } from '${resolve(root, 'src/domain/planner.ts').replace(/\\/g, '/')}';
+export { countdownSchema, courseSchema, dateSchema, eventSchema, idSchema, tripSchema } from '${resolve(root, 'src/domain/planner.ts').replace(/\\/g, '/')}';
 export { z } from 'zod';
 // canonical 只存在于函数包的 functions/planner.mjs，src/domain 无此函数；
 // 在此内联同一实现，保持 bundle 的导出面与任务契约一致（不引入 planner.mjs 整图）。
