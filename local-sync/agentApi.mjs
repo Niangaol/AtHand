@@ -11,6 +11,7 @@ import { isLedgerState } from '../src/data/storage.ts';
 import { changeTripDates, cities, newTrip } from '../src/domain/trips.ts';
 import { expenseCategories } from '../src/domain/records.ts';
 import { buildCampusExamEvents, buildCampusRules, previewCampus } from '../src/domain/campusSync.ts';
+import { buildDayBrief, buildFocusInsights, buildLedgerInsights, buildWeekReview } from '../src/domain/insights.ts';
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const MAX_RANGE_DAYS = 62;
@@ -37,6 +38,9 @@ const yuan = z.number().positive().max(9_999_999.99);
 const notes = z.string().max(10000);
 
 const dayOverviewInput = z.object({ date: dateSchema.optional() }).strict();
+const dayBriefInput = z.object({ date: dateSchema.optional() }).strict();
+const weekReviewInput = z.object({ anchor: dateSchema.optional() }).strict();
+const insightWindowInput = z.object({ days: z.number().int().min(7).max(90).default(30) }).strict();
 const scheduleListInput = z.object({ from: dateSchema.optional(), to: dateSchema.optional() }).strict();
 const scheduleCreateInput = z.object({
   title, start: isoInstant, end: isoInstant, kind: z.enum(['course', 'shift', 'exam', 'deadline', 'event']).default('event'), location: location.default(''),
@@ -232,6 +236,41 @@ export function createAgentApi({ readPlanner, execute, readCalendars, readLedger
   }
 
   const tools = [
+    {
+      name: 'day_brief', scope: 'read', input: dayBriefInput,
+      description: '今日简报：当天安排、下一项、未来7天倒计时、花费、专注和预警。日期不填就是今天。',
+      handler: (args) => {
+        const snap = snapshot();
+        const date = args.date ?? snap.today;
+        const facts = buildDayBrief(snap.doc.state, snap.records, snap.calendars, date, snap.now);
+        return { result: { ...facts, timeZone }, revision: snap.doc.revision, serverId: snap.doc.serverId };
+      },
+    },
+    {
+      name: 'week_review', scope: 'read', input: weekReviewInput,
+      description: '本周复盘：本周与上周的支出、收入、工时、专注对比，分类占比和预警。锚点日期不填就是今天所在周。',
+      handler: (args) => {
+        const snap = snapshot();
+        const facts = buildWeekReview(snap.doc.state, snap.records, snap.calendars, args.anchor ?? snap.today, snap.now);
+        return { result: { ...facts, timeZone }, revision: snap.doc.revision, serverId: snap.doc.serverId };
+      },
+    },
+    {
+      name: 'ledger_insights', scope: 'read', input: insightWindowInput,
+      description: '账本洞察：近 N 天（7-90，默认30）支出、分类占比、与上一周期对比、大额支出和异常单笔。',
+      handler: (args) => {
+        const snap = snapshot();
+        return { result: { ...buildLedgerInsights(snap.records, snap.today, args.days), timeZone }, revision: snap.doc.revision, serverId: snap.doc.serverId };
+      },
+    },
+    {
+      name: 'focus_insights', scope: 'read', input: insightWindowInput,
+      description: '专注洞察：近 N 天（7-90，默认30）总分钟、每日分布、连续天数、高峰时段和常做任务。',
+      handler: (args) => {
+        const snap = snapshot();
+        return { result: { ...buildFocusInsights(snap.doc.state, snap.today, args.days, snap.now), timeZone }, revision: snap.doc.revision, serverId: snap.doc.serverId };
+      },
+    },
     {
       name: 'day_overview', scope: 'read', input: dayOverviewInput,
       description: '查看某一天的安排、最近倒计时、进行中的专注和今日/本周专注分钟数。日期不填就是今天。',
