@@ -5,6 +5,9 @@ import { assistantNav, navigation, navigationGroups } from './navigation';
 import { useRecords } from '../data/RecordsProvider';
 import { gatewayUsername, isGatewayConnected } from '../data/gateway';
 
+/** 窄屏底部 Tab 只展示高频四项（与 App 的首页/账本/日程/我的对齐），其余页面从首页与设置页进入。 */
+const mobilePrimaryPaths = new Set(['/', '/ledger', '/schedule', '/settings']);
+
 export function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -49,7 +52,7 @@ export function Shell() {
         <span className="assistant-entry-copy"><strong>AI 工作台</strong><small>一句话查、记、安排</small></span>
         <ArrowUpRight size={15} />
       </NavLink>
-      <nav aria-label="主导航" className="main-nav">{navigationGroups.map((group) => <div className="nav-group" key={group.title}><span className="nav-caption">{group.title}</span>{group.items.map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}><Icon size={19} strokeWidth={1.7} /><span>{label}</span></NavLink>)}</div>)}</nav>
+      <nav aria-label="主导航" className="main-nav">{navigationGroups.map((group) => <div className="nav-group" key={group.title}><span className="nav-caption">{group.title}</span>{group.items.map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => `nav-item${isActive ? ' active' : ''}${mobilePrimaryPaths.has(path) ? ' mobile-primary' : ''}`}><Icon size={19} strokeWidth={1.7} /><span>{label}</span></NavLink>)}</div>)}</nav>
       <div className="sidebar-bottom"><div className="sidebar-note"><Sprout size={22} /><p>小事顺手记，<br />日子慢慢理。</p><Link to="/settings">数据与设置 <ArrowUpRight size={14} /></Link></div>{signedIn
         ? <Link className="profile" to="/settings"><span className="avatar">{accountName ? accountName.slice(0, 1) : '我'}</span><span>{accountName || '我的账号'}<small>账号与设备</small></span><span className="profile-dot" /></Link>
         : <Link className="profile" to="/login"><span className="avatar">登</span><span>还没有登录<small>登录或注册</small></span></Link>}</div>

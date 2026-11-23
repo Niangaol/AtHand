@@ -66,10 +66,17 @@ test('mobile pages fit 375px and navigation stays usable', async ({ page }) => {
     expect(sizes.content, `${path} must not overflow horizontally`).toBeLessThanOrEqual(sizes.viewport);
   }
   const nav = page.getByRole('navigation', { name: '主导航' });
-  await nav.getByRole('link', { name: '今天', exact: true }).click();
-  await expect(page).toHaveURL('/today');
-  const positions = await page.evaluate(() => ({ headingTop: document.querySelector('h1')!.getBoundingClientRect().top, navBottom: document.querySelector('.sidebar')!.getBoundingClientRect().bottom }));
-  expect(positions.headingTop).toBeGreaterThanOrEqual(positions.navBottom);
+  await nav.getByRole('link', { name: '周账单', exact: true }).click();
+  await expect(page).toHaveURL('/ledger');
+  const positions = await page.evaluate(() => {
+    const heading = document.querySelector('h1')!.getBoundingClientRect();
+    const bar = document.querySelector('.sidebar')!.getBoundingClientRect();
+    return { headingTop: heading.top, headingBottom: heading.bottom, navTop: bar.top, navBottom: bar.bottom, viewport: window.innerHeight };
+  });
+  // 底部固定 Tab 占住视口下沿，标题必须完整落在 Tab 之上，不能被它遮挡。
+  expect(positions.headingTop).toBeGreaterThanOrEqual(0);
+  expect(positions.headingBottom).toBeLessThanOrEqual(positions.navTop);
+  expect(positions.navBottom).toBeLessThanOrEqual(positions.viewport);
   await page.screenshot({ path: 'test-results/mobile-home.png', fullPage: true });
   await nav.getByRole('link', { name: '设置' }).click();
   await expect(page.getByRole('heading', { name: '按自己的节奏来。' })).toBeVisible();
