@@ -417,6 +417,11 @@ let assistant;
 const getAssistant = () => assistant ??= createAssistant({
   directory: DATA_DIR,
   getTools: async () => (await getAgentApi().manifest({ kind: 'assistant', name: '内置助手', scope: 'write' })).tools,
+  getBriefFacts: async (scope) => {
+    const tool = scope === 'week' ? 'week_review' : 'day_brief';
+    const result = await getAgentApi().call({ tool, arguments: {}, scope: 'read', actor: 'assistant', caller: { kind: 'assistant', name: '内置助手', scope: 'write' } });
+    return result.result;
+  },
   callTool: async ({ tool, args, requestId }) => {
     const summary = JSON.stringify(args ?? {}).slice(0, 500);
     try {
@@ -699,6 +704,16 @@ const server = http.createServer(async (request, response) => {
       }
       if (request.method === 'POST' && url.pathname === '/api/assistant/test') {
         json(response, 200, { ok: true, result: await getAssistant().test() });
+        return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/assistant/briefing') {
+        const scope = url.searchParams.get('scope') ?? 'day';
+        if (scope !== 'day' && scope !== 'week') {
+          json(response, 400, { ok: false, error: 'invalid_scope', message: 'scope 只能是 day 或 week。' });
+          return;
+        }
+        const fresh = url.searchParams.get('fresh') === '1';
+        json(response, 200, { ok: true, ...(await getAssistant().briefing({ scope, fresh })) });
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/assistant/chat') {

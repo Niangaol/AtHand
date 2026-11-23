@@ -2,12 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRedactor, normalizePrivacyMode } from './privacy.mjs';
+import { dayBriefNarrative, weekReviewNarrative } from '../src/domain/insights.ts';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434/v1';
 const TIMEOUT_MS = 90_000;
 const MAX_MESSAGES = 20;
 const MAX_ITERATIONS = 5;
 const MAX_TOOL_RESULT = 12_000;
+const BRIEFING_TIMEOUT_MS = 30_000;
+const BRIEFING_TTL_MS = 10 * 60_000;
+const BRIEFING_MAX = 50;
+const BRIEFING_MAX_CHARS = 600;
 
 export class AssistantError extends Error {
   constructor(status, code, message) {
@@ -108,8 +113,32 @@ function summarizeTool(name, result) {
   return '';
 }
 
-export function createAssistant({ directory, getTools, callTool }) {
+function briefingPrompt(scope, factsText) {
+  return [
+    `你是「顺手」的简报助手。下面是代码算好的${scope === 'day' ? '今日简报' : '本周复盘'}数据（JSON）。`,
+    '规则：',
+    '1. 只根据这些数据写 3 到 5 句简体中文，不要编造数据里没有的事。',
+    '2. 金额说“元”，时间用 HH:MM；不要输出 JSON、列表符号或标题。',
+    '3. 先给结论，再给一两句提醒；不确定就不提。',
+    factsText,
+  ].join('\n');
+}
+
+function sanitizeNarrative(text) {
+  let value = String(text ?? '').replace(/```[a-z]*\n?/gi, '').trim();
+  const quoted = value.match(/^["'“”‘’「」『』](.*)["'“”‘’「」『』]$/s);
+  if (quoted) value = quoted[1].trim();
+  if (value.length < 5 || value.length > BRIEFING_MAX_CHARS) return '';
+  return value;
+}
+
+function templateNarrative(scope, facts) {
+  return scope === 'day' ? dayBriefNarrative(facts) : weekReviewNarrative(facts);
+}
+
+export function createAssistant({ directory, getTools, callTool, getBriefFacts }) {
   const file = path.join(directory, 'assistant.json');
+  const briefCache = new Map();
 
   function readSettings() {
     try { return normalizeSettings(JSON.parse(fs.readFileSync(file, 'utf8'))); }
@@ -143,6 +172,7 @@ export function createAssistant({ directory, getTools, callTool }) {
     else if (typeof input?.apiKey === 'string' && input.apiKey.trim()) apiKey = input.apiKey.trim().slice(0, 500);
     const next = { baseUrl, model, apiKey, privacyMode, updatedAt: new Date().toISOString() };
     writeSettings(next);
+    briefCache.clear();
     return { baseUrl, model, hasApiKey: Boolean(apiKey), privacyMode, updatedAt: next.updatedAt };
   }
 
@@ -245,5 +275,85 @@ export function createAssistant({ directory, getTools, callTool }) {
     return { reply: redacting ? redactor.rehydrateText(reply) : reply, trace };
   }
 
-  return { publicSettings, updateSettings, test, chat };
+  function cacheKey(scope, facts) {
+    return `${scope}:${scope === 'week' ? facts.start : facts.date}`;
+  }
+
+  // 简报事实里地点类字段整字段脱敏；其余字符串按内容脱敏，保留可读的标题，
+  // 这样模型仍能写出像样的句子，手机号、证件号、邮箱不会离开本机。
+  function redactFacts(redactor, value) {
+    if (typeof value === 'string') return redactor.redactText(value);
+    if (Array.isArray(value)) return value.map((item) => redactFacts(redactor, item));
+    if (!value || typeof value !== 'object') return value;
+    const output = {};
+    for (const [key, item] of Object.entries(value)) {
+      output[key] = (key === 'location' || key === 'address' || key === 'room') && typeof item === 'string' && item.trim()
+        ? redactor.redactValue({ [key]: item })[key]
+        : redactFacts(redactor, item);
+    }
+    return output;
+  }
+
+  async function briefing({ scope = 'day', fresh = false } = {}) {
+    if (typeof getBriefFacts !== 'function') throw new AssistantError(503, 'briefing_unavailable', '简报暂时不可用。');
+    const settings = readSettings();
+    const facts = await getBriefFacts(scope);
+    const key = `${cacheKey(scope, facts)}:${settings.model}`;
+    const cached = briefCache.get(key);
+    if (!fresh && cached && Date.now() - cached.at < BRIEFING_TTL_MS) return cached.value;
+
+    const finish = (value) => {
+      briefCache.set(key, { at: Date.now(), value });
+      if (briefCache.size > BRIEFING_MAX) briefCache.delete(briefCache.keys().next().value);
+      return value;
+    };
+    const degraded = (warning) => finish({
+      scope, date: scope === 'week' ? facts.end : facts.date, facts,
+      narrative: templateNarrative(scope, facts), degraded: true, warning, model: null, generatedAt: new Date().toISOString(),
+    });
+
+    if (!settings.model) return degraded('还没有配置模型，先给你规则版小结。');
+    const loopback = isLoopback(settings.baseUrl);
+    if (!loopback && settings.privacyMode === 'local-only') return degraded('隐私模式是“只在本机”，但模型地址不是本机。');
+
+    const redacting = !loopback && settings.privacyMode === 'redact';
+    const redactor = redacting ? createRedactor() : null;
+    const factsText = JSON.stringify(redacting ? redactFacts(redactor, facts) : facts);
+    const body = {
+      model: settings.model,
+      messages: [
+        { role: 'system', content: briefingPrompt(scope, factsText) },
+        { role: 'user', content: scope === 'day' ? '写今天的简报。' : '写本周的复盘。' },
+      ],
+      temperature: 0.3, max_tokens: 400, stream: false,
+      ...(loopback ? { reasoning_effort: 'none' } : {}),
+    };
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), BRIEFING_TIMEOUT_MS);
+      let data;
+      try {
+        const response = await fetch(`${settings.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}) },
+          body: JSON.stringify(body), redirect: 'error', signal: controller.signal,
+        });
+        data = await response.json().catch(() => null);
+        if (!response.ok) return degraded('模型没有正常回应，先给你规则版。');
+      } finally {
+        clearTimeout(timer);
+      }
+      const raw = data?.choices?.[0]?.message?.content;
+      const narrative = sanitizeNarrative(redacting ? redactor.rehydrateText(raw) : raw);
+      if (!narrative) return degraded('模型的回复不合用，先给你规则版。');
+      return finish({
+        scope, date: scope === 'week' ? facts.end : facts.date, facts,
+        narrative, degraded: false, warning: null, model: settings.model, generatedAt: new Date().toISOString(),
+      });
+    } catch {
+      return degraded('模型没有及时回应，先给你规则版。');
+    }
+  }
+
+  return { publicSettings, updateSettings, test, chat, briefing };
 }
