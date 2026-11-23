@@ -20,7 +20,9 @@ data class LedgerState(
     val version: Int, val records: List<RecordEntry>, val workplaces: List<Workplace>,
     val hourlyRateCents: Long,
 ) {
-    companion object { val EMPTY = LedgerState(1, emptyList(), emptyList(), 0L) }
+    // 网页端 isLedgerState 要求 settings.hourlyRateCents > 0；缺失时用这个默认值而不是 0，
+    // 否则手机写回的账本会被网页判为「格式无法识别」。
+    companion object { val EMPTY = LedgerState(1, emptyList(), emptyList(), 2000L) }
 }
 
 data class PlannerEvent(
@@ -28,9 +30,11 @@ data class PlannerEvent(
     val start: Long, val end: Long, val allDay: Boolean, val source: String,
 )
 
+data class FocusSegment(val start: Long, val end: Long?)
+
 data class FocusSession(
     val id: String, val task: String, val minutes: Int, val startedAt: Long, val status: String,
-    val segments: List<Long?>, val owner: String, val epoch: Int,
+    val segments: List<FocusSegment>, val owner: String, val epoch: Int,
 )
 
 data class PlannerSnapshot(
@@ -41,6 +45,8 @@ data class PlannerSnapshot(
 }
 
 object Models {
+    private val VALID_SOURCES = setOf("demo", "manual", "school", "import")
+
     private fun JSONArray.objects(): List<JSONObject> =
         (0 until length()).mapNotNull { optJSONObject(it) }
 
@@ -59,7 +65,7 @@ object Models {
                 endTime = row.optStringOrNull("endTime"),
                 durationMinutes = row.optIntOrNull("durationMinutes"),
                 hourlyRateCents = row.optLongOrNull("hourlyRateCents"),
-                source = row.optString("source", "manual"),
+                source = row.optString("source").takeIf { it in VALID_SOURCES } ?: "manual",
             )
         }
         val workplaces = (ledger.optJSONArray("workplaces") ?: JSONArray()).objects().map { row ->
@@ -70,9 +76,11 @@ object Models {
             )
         }
         val settings = ledger.optJSONObject("settings")
+        // 0 与「缺失」在网页端语义不同：positiveInteger 要求 > 0，所以 0 一律归一为默认值。
+        val rate = settings?.optLong("hourlyRateCents") ?: 0L
         return LedgerState(
             version = ledger.optInt("version", 1), records = records, workplaces = workplaces,
-            hourlyRateCents = settings?.optLong("hourlyRateCents") ?: 0L,
+            hourlyRateCents = if (rate > 0L) rate else 2000L,
         )
     }
 
@@ -86,8 +94,12 @@ object Models {
             )
         }
         val sessions = (state.optJSONArray("focusSessions") ?: JSONArray()).objects().map { row ->
+            // segment 的 start 必须保留：暂停→继续后两段之间的间隙不能算作专注时长。
             val segments = (row.optJSONArray("segments") ?: JSONArray()).let { array ->
-                (0 until array.length()).map { i -> array.optJSONObject(i)?.let { it.optLongOrNull("end") } }
+                (0 until array.length()).mapNotNull { i ->
+                    val item = array.optJSONObject(i) ?: return@mapNotNull null
+                    FocusSegment(start = item.optLong("start"), end = item.optLongOrNull("end"))
+                }
             }
             FocusSession(
                 id = row.optString("id"), task = row.optString("task"), minutes = row.optInt("minutes"),
@@ -123,10 +135,10 @@ object Models {
                         put("id", row.id); put("task", row.task); put("minutes", row.minutes)
                         put("startedAt", row.startedAt); put("status", row.status)
                         put("segments", JSONArray().apply {
-                            row.segments.forEach { end ->
+                            row.segments.forEach { segment ->
                                 put(JSONObject().apply {
-                                    put("start", row.startedAt)
-                                    if (end == null) put("end", JSONObject.NULL) else put("end", end)
+                                    put("start", segment.start)
+                                    if (segment.end == null) put("end", JSONObject.NULL) else put("end", segment.end)
                                 })
                             }
                         })

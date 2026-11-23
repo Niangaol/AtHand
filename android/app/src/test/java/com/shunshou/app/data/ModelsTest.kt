@@ -31,7 +31,8 @@ class ModelsTest {
     fun toleratesNullLedger() {
         val state = Models.parseLedger(JSONObject("""{"ok":true,"ledger":null}"""))
         assertEquals(0, state.records.size)
-        assertEquals(0L, state.hourlyRateCents)
+        // 缺失回落正数默认值而不是 0：网页端 positiveInteger 要求 settings.hourlyRateCents > 0。
+        assertEquals(2000L, state.hourlyRateCents)
     }
 
     @Test
@@ -51,7 +52,8 @@ class ModelsTest {
         assertEquals(7, snapshot.revision)
         assertEquals("课", snapshot.events[0].title)
         assertEquals(1, snapshot.focusSessions[0].epoch)
-        assertNull(snapshot.focusSessions[0].segments[0])
+        assertEquals(1795000000000L, snapshot.focusSessions[0].segments[0].start)
+        assertNull(snapshot.focusSessions[0].segments[0].end)
         assertEquals(30, snapshot.focusMinutes)
     }
 
@@ -66,5 +68,42 @@ class ModelsTest {
         assertEquals("r1", json.getString("id"))
         assertEquals(1850L, json.getLong("amountCents"))
         assertEquals("吃饭", json.getString("category"))
+    }
+
+    @Test
+    fun keepsSegmentStartSoPauseGapIsNotCounted() {
+        val body = JSONObject(
+            """{"state":{"version":1,"events":[],"courseRules":[],
+                "focusSessions":[{"id":"f1","task":"看书","minutes":25,"startedAt":1000,
+                  "status":"paused","segments":[{"start":1000,"end":2000},{"start":5000,"end":6000}],
+                  "owner":"dev1","epoch":1}],
+                "countdowns":[],"trips":[],"serviceEntries":[],
+                "preferences":{"focusMinutes":25},"reminderReceipts":[]},"revision":1}"""
+        )
+        val session = Models.parsePlanner(body).focusSessions[0]
+        assertEquals(2, session.segments.size)
+        assertEquals(1000L, session.segments[0].start)
+        assertEquals(2000L, session.segments[0].end)
+        assertEquals(5000L, session.segments[1].start)
+        assertEquals(6000L, session.segments[1].end)
+    }
+
+    @Test
+    fun normalizesZeroHourlyRateToPositiveDefault() {
+        val body = JSONObject(
+            """{"ok":true,"ledger":{"version":1,"records":[],"workplaces":[],"settings":{"hourlyRateCents":0}}}"""
+        )
+        assertEquals(2000L, Models.parseLedger(body).hourlyRateCents)
+    }
+
+    @Test
+    fun normalizesUnknownSourceToManual() {
+        val body = JSONObject(
+            """{"ok":true,"ledger":{"version":1,"records":[
+                 {"id":"r1","type":"expense","date":"2026-11-23","title":"x","amountCents":100,
+                  "category":"吃饭","source":""}],
+               "workplaces":[],"settings":{"hourlyRateCents":2000}}}"""
+        )
+        assertEquals("manual", Models.parseLedger(body).records[0].source)
     }
 }
