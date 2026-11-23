@@ -33,7 +33,7 @@ export default defineConfig({
   preview: { proxy: { '/web': hduProxy, '/api': 'http://127.0.0.1:18787' } },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'functions/**/*.test.ts'],
     setupFiles: ['./src/test/setup.ts'],
     css: false,
   },

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "sync": "node local-sync/server.mjs"
+    "sync": "node local-sync/server.mjs",
+    "build:fn-domain": "node tools/build-domain-bundle.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
