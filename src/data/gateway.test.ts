@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearGatewayAccountChanged, clearGatewaySession, gatewayAccountChanged, gatewayFetch, gatewayLogin, gatewayRegister, gatewayToken, gatewayUsername, normalizeGatewayUrl } from './gateway';
+import { applyAuthHeaders, clearGatewayAccountChanged, clearGatewaySession, gatewayAccountChanged, gatewayFetch, gatewayLogin, gatewayRegister, gatewayToken, gatewayUsername, normalizeGatewayUrl } from './gateway';
 
 afterEach(() => {
   clearGatewaySession();
@@ -52,5 +52,16 @@ describe('gateway client', () => {
     expect(gatewayAccountChanged()).toBe(false);
     const registered = await gatewayRegister('https://cloud.test/functions/v1/app', '丙同学', 'password123');
     expect(registered.user?.username).toBe('丙同学');
+  });
+
+  it('sends both auth headers to cloud and only Authorization to local gateway', () => {
+    // 云端网关剥离 Authorization，只认 X-Shunshou-Session；本机网关相反。
+    const cloud = applyAuthHeaders(new Headers(), 'https://x.test/functions/v1/app', 'tok-1');
+    expect(cloud.get('Authorization')).toBe('Bearer tok-1');
+    expect(cloud.get('X-Shunshou-Session')).toBe('tok-1');
+
+    const local = applyAuthHeaders(new Headers(), 'http://127.0.0.1:18787', 'tok-2');
+    expect(local.get('Authorization')).toBe('Bearer tok-2');
+    expect(local.get('X-Shunshou-Session')).toBeNull();
   });
 });

@@ -69,6 +69,16 @@ export function isCloudBackendUrl(raw: string): boolean {
   return /\/functions\/v1\/app\/?$/.test(raw.trim());
 }
 
+/**
+ * 云端网关会剥离 Authorization 头，只认 X-Shunshou-Session；
+ * 本机网关只认 Authorization。两处都带上，才能同一套代码跑两种后端。
+ */
+export function applyAuthHeaders(headers: Headers, base: string, token: string): Headers {
+  headers.set('Authorization', `Bearer ${token}`);
+  if (isCloudBackendUrl(base)) headers.set('X-Shunshou-Session', token);
+  return headers;
+}
+
 export type BackendMode = 'off' | 'cloud' | 'local';
 
 /** 已连接按网关地址判定；未连接时托管站点按云端口径、本机开发按电脑口径。 */
@@ -204,10 +214,7 @@ export async function gatewayLogout(): Promise<void> {
   try {
     await fetch(`${base}/api/logout`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(/\/functions\/v1\/app$/.test(base) ? { 'X-Shunshou-Session': token } : {}),
-      },
+      headers: applyAuthHeaders(new Headers(), base, token),
     });
   } catch { /* 后端离线时也允许本机退出。 */ }
 }
@@ -234,8 +241,7 @@ export async function gatewayFetch(path: string, init: RequestInit = {}): Promis
   const token = gatewayToken();
   if (!token) throw new GatewayError('还没有连接后端。', 'not_connected');
   const headers = new Headers(init.headers);
-  headers.set('Authorization', `Bearer ${token}`);
-  if (/\/functions\/v1\/app$/.test(base)) headers.set('X-Shunshou-Session', token);
+  applyAuthHeaders(headers, base, token);
   try {
     return await fetch(`${base}${path}`, { ...init, headers });
   } catch {

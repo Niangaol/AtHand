@@ -2,7 +2,7 @@ import { commandKey } from '../domain/planner';
 import type { PlannerCommand } from '../domain/planner';
 import { remoteDocumentSchema } from './plannerStorage';
 import type { PlannerEnvelope, RemoteDocument } from './plannerStorage';
-import { clearGatewaySession, gatewayUrl, gatewayToken } from './gateway';
+import { applyAuthHeaders, clearGatewaySession, gatewayUrl, gatewayToken } from './gateway';
 
 export type PlannerTransport = {
   read: () => Promise<RemoteDocument>;
@@ -23,9 +23,7 @@ export function createGatewayPlannerTransport(): PlannerTransport {
   const token = gatewayToken();
   const request = async (path: string, init: RequestInit = {}) => {
     if (!token || gatewayUrl() !== base || gatewayToken() !== token) throw new PlannerSyncError('连接已改变，请重新同步；不会向其他服务器发送旧操作。', 'server_changed');
-    const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${token}`);
-    if (/\/functions\/v1\/app$/.test(base)) headers.set('X-Shunshou-Session', token);
+    const headers = applyAuthHeaders(new Headers(init.headers), base, token);
     const response = await fetch(`${base}${path}`, { ...init, headers, redirect: 'error', signal: AbortSignal.timeout(10000) });
     if (gatewayUrl() !== base || gatewayToken() !== token) throw new PlannerSyncError('连接已改变，旧请求确认保留至重新连接后处理。', 'server_changed');
     return responseBody(response);

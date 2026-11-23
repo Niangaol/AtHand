@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { z } from 'zod';
 import { calendarSnapshotSchema, type CalendarSnapshot } from '../domain/calendar';
-import { gatewayToken, gatewayUrl } from './gateway';
+import { applyAuthHeaders, gatewayToken, gatewayUrl } from './gateway';
 
 const documentSchema = z.object({ serverId: z.string().min(1), sources: z.array(calendarSnapshotSchema).max(30) }).strict();
 const Context = createContext<{ sources: CalendarSnapshot[]; status: string; busy: boolean; refresh: () => Promise<void> }>({ sources: [], status: '', busy: false, refresh: async () => {} });
@@ -28,9 +28,8 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     const timeout = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const cloud = /\/functions\/v1\/app$/.test(url);
       const response = await fetch(`${url}/api/calendar`, {
-        headers: { Authorization: `Bearer ${token}`, ...(cloud ? { 'X-Shunshou-Session': token } : {}) },
+        headers: applyAuthHeaders(new Headers(), url, token),
         signal: controller.signal,
       });
       if (response.status === 401) throw new Error('登录已过期，请重新连接电脑');
