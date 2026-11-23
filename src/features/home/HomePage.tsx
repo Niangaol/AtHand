@@ -111,7 +111,6 @@ export function HomePage() {
   async function ask() {
     const content = draft.trim();
     if (!content || sending) return;
-    if (cloudMode) { setAskError('内置助手需要电脑上的本机网关；云端账号暂不运行模型。'); return; }
     if (!connected) { setAskError(`还没有连接${noun}，助手暂时不能执行。`); return; }
     const next = [...turns, { role: 'user' as const, content }].slice(-8);
     setSending(true);
@@ -166,7 +165,7 @@ export function HomePage() {
 
     {!askOpen ? <button type="button" className="home-ask" aria-expanded="false" aria-controls="home-assistant" onClick={() => openAsk()}>
       <span className="home-ask-mark"><MessageSquare size={17} strokeWidth={1.7} /></span>
-      <span className="home-ask-copy"><strong>说一句，顺手去做</strong><small>{cloudMode ? '内置助手需要电脑上的本机网关' : '查安排、记账、排日程、开专注'}</small></span>
+      <span className="home-ask-copy"><strong>说一句，顺手去做</strong><small>查安排、记账、排日程、开专注</small></span>
       <span className="home-ask-example">比如：明晚七点安排复习一小时</span>
       <ArrowUpRight size={18} />
     </button> : <section id="home-assistant" className="home-assistant" aria-label="问助手">
@@ -174,32 +173,27 @@ export function HomePage() {
         <span className="assistant-kicker"><MessageSquare size={13} strokeWidth={1.7} /> 顺手助手</span>
         <button type="button" className="home-assistant-close" aria-label="收起输入框" onClick={closeAsk} disabled={sending}><X size={16} /></button>
       </div>
-      {cloudMode ? <div className="home-answer" role="status">
-        <div className="home-answer-head"><span>云端账号暂不运行助手</span></div>
-        <p>内置助手和模型设置只在本机网关上运行：在电脑上执行 npm run sync，到设置页把服务地址改为本机网关并登录，就能在这里说一句话办事。云端账号的账本、日程和专注不受影响，可以继续在页面上记录。</p>
-      </div> : <>
-        <form className="assistant-composer home-composer" onSubmit={(event) => { event.preventDefault(); void ask(); }}>
-          <div className="composer-field">
-            <textarea ref={inputRef} aria-label="告诉助手要做什么" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="比如：明晚七点安排复习一小时" rows={2} maxLength={4000} disabled={sending}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask(); }
-                if (event.key === 'Escape') { event.preventDefault(); closeAsk(); }
-              }} />
-            <span className="composer-hint">Enter 发送 · Shift + Enter 换行<span className="composer-hint-esc"> · Esc 收起</span></span>
-          </div>
-          <button className="assistant-send" type="submit" disabled={sending || !draft.trim()}><Send size={18} /><span>{sending ? '处理中' : '发送'}</span></button>
-        </form>
-        {askError ? <div className="home-ask-error" role="alert"><span>{askError}</span><Link to="/settings">{connected ? '检查模型设置' : '去连接电脑'}</Link></div> : null}
-        {sending ? <p className="assistant-thinking" role="status"><span /><span /><span />正在查你的数据，并调用顺手的工具…</p> : null}
-        {lastReply ? <div className="home-answer" role="status">
-          <div className="home-answer-head"><span>顺手</span><Link to="/assistant">打开完整工作台 <ArrowUpRight size={13} /></Link></div>
-          <p>{lastReply.reply}</p>
-          {lastReply.trace.length ? <details className="assistant-trace">
-            <summary><Check size={13} />{lastReply.trace.length} 个操作</summary>
-            <ul>{lastReply.trace.map((item, index) => <li key={`${item.tool}-${index}`}><strong>{toolLabel(item.tool)}</strong><span>{item.ok ? (item.summary || '完成') : (item.message || item.error || '失败')}</span></li>)}</ul>
-          </details> : null}
-        </div> : null}
-      </>}
+      <form className="assistant-composer home-composer" onSubmit={(event) => { event.preventDefault(); void ask(); }}>
+        <div className="composer-field">
+          <textarea ref={inputRef} aria-label="告诉助手要做什么" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="比如：明晚七点安排复习一小时" rows={2} maxLength={4000} disabled={sending}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void ask(); }
+              if (event.key === 'Escape') { event.preventDefault(); closeAsk(); }
+            }} />
+          <span className="composer-hint">Enter 发送 · Shift + Enter 换行<span className="composer-hint-esc"> · Esc 收起</span></span>
+        </div>
+        <button className="assistant-send" type="submit" disabled={sending || !draft.trim()}><Send size={18} /><span>{sending ? '处理中' : '发送'}</span></button>
+      </form>
+      {askError ? <div className="home-ask-error" role="alert"><span>{askError}</span><Link to="/settings">{connected ? '检查模型设置' : '去连接电脑'}</Link></div> : null}
+      {sending ? <p className="assistant-thinking" role="status"><span /><span /><span />正在查你的数据，并调用顺手的工具…</p> : null}
+      {lastReply ? <div className="home-answer" role="status">
+        <div className="home-answer-head"><span>顺手</span><Link to="/assistant">打开完整工作台 <ArrowUpRight size={13} /></Link></div>
+        <p>{lastReply.reply}</p>
+        {lastReply.trace.length ? <details className="assistant-trace">
+          <summary><Check size={13} />{lastReply.trace.length} 个操作</summary>
+          <ul>{lastReply.trace.map((item, index) => <li key={`${item.tool}-${index}`}><strong>{toolLabel(item.tool)}</strong><span>{item.ok ? (item.summary || '完成') : (item.message || item.error || '失败')}</span></li>)}</ul>
+        </details> : null}
+      </div> : null}
     </section>}
 
     <nav className="home-intents" aria-label="核心入口">
@@ -228,7 +222,7 @@ export function HomePage() {
     <section className="home-feed" aria-label="今日记录">
       <div className="home-feed-head">
         <div><span className="home-kicker">今天</span><h2>顺手做过的事</h2></div>
-        <span className="home-sync">{cloudMode ? '内置助手需要本机网关，云端账号不同步操作记录'
+        <span className="home-sync">{cloudMode ? '云端助手已就绪'
           : !connected ? `连接${noun}后显示同步记录`
             : auditState === 'loading' ? `正在读取${noun}记录…`
               : auditState === 'error' ? `${noun}记录暂时读不到`

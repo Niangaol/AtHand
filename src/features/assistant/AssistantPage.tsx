@@ -63,7 +63,6 @@ export function AssistantPage() {
   const dockRef = useRef<HTMLDivElement>(null);
   const connected = isGatewayConnected();
   const mode = backendMode();
-  const cloudMode = mode === 'cloud';
   const noun = backendNoun();
   const lastUser = [...messages].reverse().find((message) => message.role === 'user')?.content ?? '';
   const todayLabel = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
@@ -92,7 +91,6 @@ export function AssistantPage() {
   async function send(text: string, appendUser = true) {
     const content = text.trim();
     if (!content || sending) return;
-    if (cloudMode) { setError('内置助手只在本机网关上运行；云端账号暂不调用模型。'); return; }
     if (!connected) { setError(`还没有连接${noun}。请先到设置里连接。`); return; }
     if (!settings?.model) { setError('还没有配置模型。请先到设置里填写模型地址和名称。'); return; }
     const base = appendUser
@@ -122,80 +120,74 @@ export function AssistantPage() {
           <p>查安排、记账、开专注、理旅记。写操作直接执行，删除仍回到对应页面。</p>
         </div>
         <div className="assistant-status-strip">
-          <span className={`assistant-state${connected ? ' ok' : ''}`}><i />{cloudMode ? '云端账号已登录' : connected ? '电脑已连接' : '未连接电脑'}</span>
-          {cloudMode ? <span className="assistant-state">云端不运行助手</span> : <span className="assistant-state model" title={settings?.model || undefined}>{settings?.model ? `模型 · ${settings.model}` : '模型未配置'}</span>}
-          {!cloudMode && settings ? <span className="assistant-state privacy">{settings.privacyMode === 'local-only' ? '只在本机' : settings.privacyMode === 'redact' ? '云端脱敏' : '不脱敏'}</span> : null}
+          <span className={`assistant-state${connected ? ' ok' : ''}`}><i />{connected ? (mode === 'cloud' ? '云端已登录' : '电脑已连接') : '未连接'}</span>
+          <span className="assistant-state model" title={settings?.model || undefined}>{settings?.model ? `模型 · ${settings.model}` : '模型未配置'}</span>
+          {settings ? <span className="assistant-state privacy">{settings.privacyMode === 'local-only' ? '只在本机' : settings.privacyMode === 'redact' ? '云端脱敏' : '不脱敏'}</span> : null}
           {messages.length ? <button type="button" className="assistant-clear" onClick={() => setConfirmClear(true)}><Trash2 size={15} />清空</button> : null}
         </div>
       </header>
       <div className="assistant-workspace">
         <section className="assistant-main" aria-label="助手对话">
-          {cloudMode ? <div className="assistant-setup">
+          {!connected ? <div className="assistant-setup">
             <span className="assistant-setup-mark"><Sparkles size={24} /></span>
-            <h2>云端账号暂不运行助手</h2>
-            <p>内置助手的模型调用、Agent 令牌和手机扫码配对都只在本机网关上工作。在电脑上执行 <code>npm run sync</code>，到设置页把服务地址改为本机网关并登录，就能回到这里说一句话办事。云端账号的账本、日程和专注照常可用，页面上记录不受影响。</p>
-            <Link className="button primary" to="/settings">查看后端设置</Link>
+            <h2>先连接电脑</h2>
+            <p>助手通过电脑上的模型和数据运行。连接后，这里就是每天的第二大脑。</p>
+            <Link className="button primary" to="/settings">去连接电脑</Link>
           </div>
-            : !connected ? <div className="assistant-setup">
-              <span className="assistant-setup-mark"><Sparkles size={24} /></span>
-              <h2>先连接电脑</h2>
-              <p>助手通过电脑上的模型和数据运行。连接后，这里就是每天的第二大脑。</p>
-              <Link className="button primary" to="/settings">去连接电脑</Link>
-            </div>
-              : loadingSettings ? <div className="assistant-setup"><Sparkles size={24} /><p role="status">正在读取模型设置…</p></div>
-                : !settings?.model ? <div className="assistant-setup">
-                  <span className="assistant-setup-mark"><Sparkles size={24} /></span>
-                  <h2>还差一个模型</h2>
-                  <p>到设置里填模型地址和名称。本机 Ollama 推荐 <code>ling-3.0-tiny:32k</code>；兼容 OpenAI 的云端服务也可以。</p>
-                  <Link className="button primary" to="/settings">配置模型</Link>
-                  {settingsError ? <p className="form-hint">{settingsError}</p> : null}
+            : loadingSettings ? <div className="assistant-setup"><Sparkles size={24} /><p role="status">正在读取模型设置…</p></div>
+              : !settings?.model ? <div className="assistant-setup">
+                <span className="assistant-setup-mark"><Sparkles size={24} /></span>
+                <h2>还差一个模型</h2>
+                <p>到设置里填模型地址和名称。本机 Ollama 推荐 <code>ling-3.0-tiny:32k</code>；兼容 OpenAI 的云端服务也可以。</p>
+                <Link className="button primary" to="/settings">配置模型</Link>
+                {settingsError ? <p className="form-hint">{settingsError}</p> : null}
+              </div>
+              : <>
+                <div className="assistant-thread" role="log" aria-live="polite" aria-label="对话记录" ref={threadRef}>
+                  {messages.length === 0 ? <div className="assistant-start">
+                    <div className="assistant-start-copy">
+                      <span className="assistant-kicker">现在可以开始</span>
+                      <h2>今天想先处理什么？</h2>
+                      <p>直接说一件事。助手会先查你的数据，再把结果写回来。</p>
+                    </div>
+                    <div className="assistant-intents">
+                      {quickPrompts.map((prompt, index) => <button type="button" key={prompt.label} className="assistant-intent" disabled={sending} onClick={() => void send(prompt.text)}>
+                        <span className="intent-index">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="intent-copy"><strong>{prompt.label}</strong><span>{prompt.hint}</span></span>
+                        <ArrowUpRight size={17} />
+                      </button>)}
+                    </div>
+                  </div> : <ol className="assistant-log">{messages.map((message) => <li key={message.id} className={`assistant-turn ${message.role}`}>
+                    <div className="assistant-turn-head"><span className="assistant-speaker">{message.role === 'user' ? '你' : '顺手'}</span><time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time></div>
+                    <div className="assistant-turn-body">{message.content}</div>
+                    {message.trace?.length ? <details className="assistant-trace">
+                      <summary><Check size={13} />{message.trace.length} 个操作</summary>
+                      <ul>{message.trace.map((item, index) => <li key={`${message.id}-${index}`}><strong>{toolLabel(item.tool)}</strong><span>{item.ok ? (item.summary || '完成') : (item.message || item.error || '失败')}</span></li>)}</ul>
+                    </details> : null}
+                  </li>)}</ol>}
+                  {sending ? <p className="assistant-thinking" role="status"><span /><span /><span />正在查你的数据，并调用顺手的工具…</p> : null}
                 </div>
-                : <>
-                  <div className="assistant-thread" role="log" aria-live="polite" aria-label="对话记录" ref={threadRef}>
-                    {messages.length === 0 ? <div className="assistant-start">
-                      <div className="assistant-start-copy">
-                        <span className="assistant-kicker">现在可以开始</span>
-                        <h2>今天想先处理什么？</h2>
-                        <p>直接说一件事。助手会先查你的数据，再把结果写回来。</p>
-                      </div>
-                      <div className="assistant-intents">
-                        {quickPrompts.map((prompt, index) => <button type="button" key={prompt.label} className="assistant-intent" disabled={sending} onClick={() => void send(prompt.text)}>
-                          <span className="intent-index">{String(index + 1).padStart(2, '0')}</span>
-                          <span className="intent-copy"><strong>{prompt.label}</strong><span>{prompt.hint}</span></span>
-                          <ArrowUpRight size={17} />
-                        </button>)}
-                      </div>
-                    </div> : <ol className="assistant-log">{messages.map((message) => <li key={message.id} className={`assistant-turn ${message.role}`}>
-                      <div className="assistant-turn-head"><span className="assistant-speaker">{message.role === 'user' ? '你' : '顺手'}</span><time dateTime={new Date(message.at).toISOString()}>{formatTime(message.at)}</time></div>
-                      <div className="assistant-turn-body">{message.content}</div>
-                      {message.trace?.length ? <details className="assistant-trace">
-                        <summary><Check size={13} />{message.trace.length} 个操作</summary>
-                        <ul>{message.trace.map((item, index) => <li key={`${message.id}-${index}`}><strong>{toolLabel(item.tool)}</strong><span>{item.ok ? (item.summary || '完成') : (item.message || item.error || '失败')}</span></li>)}</ul>
-                      </details> : null}
-                    </li>)}</ol>}
-                    {sending ? <p className="assistant-thinking" role="status"><span /><span /><span />正在查你的数据，并调用顺手的工具…</p> : null}
-                  </div>
-                  {error ? <div className="inline-notice assistant-error" role="alert"><span>{error}</span>{lastUser ? <button type="button" className="text-link" onClick={() => void send(lastUser, false)}>重试</button> : null}</div> : null}
-                  <div className="assistant-dock" ref={dockRef}>
-                    {messages.length ? <div className="assistant-quick">{quickPrompts.map((prompt) => <button type="button" key={prompt.label} disabled={sending} onClick={() => void send(prompt.text)}>{prompt.label}</button>)}</div> : null}
-                    <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); void send(input); }}>
-                      <div className="composer-field">
-                        <textarea aria-label="告诉助手要做什么" value={input} onChange={(event) => setInput(event.target.value)} placeholder="比如：明晚七点安排复习一小时" rows={2} maxLength={4000} disabled={sending}
-                          onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(input); } }} />
-                        <span className="composer-hint">Enter 发送 · Shift + Enter 换行</span>
-                      </div>
-                      <button className="assistant-send" disabled={sending || !input.trim()}><Send size={18} /><span>{sending ? '处理中' : '发送'}</span></button>
-                    </form>
-                  </div>
-                </>}
+                {error ? <div className="inline-notice assistant-error" role="alert"><span>{error}</span>{lastUser ? <button type="button" className="text-link" onClick={() => void send(lastUser, false)}>重试</button> : null}</div> : null}
+                <div className="assistant-dock" ref={dockRef}>
+                  {messages.length ? <div className="assistant-quick">{quickPrompts.map((prompt) => <button type="button" key={prompt.label} disabled={sending} onClick={() => void send(prompt.text)}>{prompt.label}</button>)}</div> : null}
+                  <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); void send(input); }}>
+                    <div className="composer-field">
+                      <textarea aria-label="告诉助手要做什么" value={input} onChange={(event) => setInput(event.target.value)} placeholder="比如：明晚七点安排复习一小时" rows={2} maxLength={4000} disabled={sending}
+                        onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(input); } }} />
+                      <span className="composer-hint">Enter 发送 · Shift + Enter 换行</span>
+                    </div>
+                    <button className="assistant-send" disabled={sending || !input.trim()}><Send size={18} /><span>{sending ? '处理中' : '发送'}</span></button>
+                  </form>
+                </div>
+              </>}
         </section>
         <aside className="assistant-rail" aria-label="工作台状态">
           <div className="rail-block">
             <span className="rail-label">此刻</span>
             <dl className="rail-facts">
               <div><dt>日期</dt><dd>{todayLabel}</dd></div>
-              <div><dt>后端</dt><dd className={connected ? 'rail-ok' : ''}>{cloudMode ? '云端账号' : connected ? '本机网关' : '未连接'}</dd></div>
-              <div><dt>模型</dt><dd title={settings?.model || undefined}>{cloudMode ? '云端不运行' : settings?.model || '未配置'}</dd></div>
+              <div><dt>后端</dt><dd className={connected ? 'rail-ok' : ''}>{mode === 'cloud' ? '云端账号' : connected ? '本机网关' : '未连接'}</dd></div>
+              <div><dt>模型</dt><dd title={settings?.model || undefined}>{settings?.model || '未配置'}</dd></div>
             </dl>
           </div>
           <div className="rail-block">
