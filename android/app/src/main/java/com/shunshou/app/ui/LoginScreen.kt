@@ -104,7 +104,7 @@ fun LoginScreen(state: AppUiState, onSubmit: (String, String, Boolean) -> Unit) 
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text(if (register) "已经有账号？" else "还没有账号？", style = Type.caption)
-                TextButton(onClick = { register = !register }) {
+                TextButton(onClick = { register = !register }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text(if (register) "去登录" else "注册一个", style = Type.caption.copy(color = Paper.brand))
                 }
             }

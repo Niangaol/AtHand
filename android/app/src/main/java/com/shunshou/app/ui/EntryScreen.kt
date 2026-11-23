@@ -53,13 +53,22 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
     var error by remember { mutableStateOf<String?>(null) }
 
     fun submit() {
+        // 网页端 isLedgerState 要求 date 是合法的 yyyy-MM-dd 且在 2000–2100 之间，
+        // 不合规会让整份账本被拒收。ISO_LOCAL_DATE 同时校验格式与日期真实性
+        // （2026/11/23 与 2026-02-30 都会抛异常）。
+        val parsedDate = runCatching {
+            LocalDate.parse(date.trim(), DateTimeFormatter.ISO_LOCAL_DATE)
+        }.getOrNull()
+        if (parsedDate == null || parsedDate.year !in 2000..2100) {
+            error = "日期格式需为 2026-11-23 这样。"; return
+        }
         if (type == "expense") {
             val cents = amount.trim().toBigDecimalOrNull()
                 ?.multiply(java.math.BigDecimal(100))?.setScale(0, java.math.RoundingMode.HALF_UP)?.toLong()
             if (cents == null || cents <= 0) { error = "金额需大于 0。"; return }
             onSave(
                 RecordEntry(
-                    id = "r-${UUID.randomUUID()}", type = "expense", date = date,
+                    id = "r-${UUID.randomUUID()}", type = "expense", date = parsedDate.format(iso),
                     title = title.trim().ifBlank { category }, amountCents = cents,
                     category = category, workplaceId = null, startTime = null, endTime = null,
                     durationMinutes = null, hourlyRateCents = null, source = "manual",
@@ -83,7 +92,7 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
             val amountCents = (durationMinutes.toLong() * rateCents + 30) / 60
             onSave(
                 RecordEntry(
-                    id = "r-${UUID.randomUUID()}", type = "work", date = date,
+                    id = "r-${UUID.randomUUID()}", type = "work", date = parsedDate.format(iso),
                     title = title.trim().ifBlank { "兼职" }, amountCents = amountCents,
                     category = null, workplaceId = workplace.id,
                     startTime = "00:00", endTime = "00:00", durationMinutes = durationMinutes,

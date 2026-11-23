@@ -82,12 +82,17 @@ fun MeScreen(state: AppUiState, onSignOut: () -> Unit, onRefresh: () -> Unit) {
             title = { Text("退出登录？", style = Type.sectionTitle) },
             text = { Text("云端数据不会删除，下次登录还能看到。", style = Type.caption) },
             confirmButton = {
-                TextButton(onClick = { confirmSignOut = false; onSignOut() }) {
+                TextButton(
+                    onClick = { confirmSignOut = false; onSignOut() },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
                     Text("退出", style = Type.caption.copy(color = Paper.red))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmSignOut = false }) { Text("取消", style = Type.caption) }
+                TextButton(onClick = { confirmSignOut = false }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("取消", style = Type.caption)
+                }
             },
         )
     }

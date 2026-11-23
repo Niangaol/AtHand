@@ -140,6 +140,8 @@ private fun RecordRow(record: RecordEntry, onDelete: () -> Unit) {
             (if (record.type == "work") "+" else "−") + LedgerMath.formatYuan(record.amountCents),
             Type.figure.copy(color = if (record.type == "work") Paper.brand else Paper.red),
         )
-        TextButton(onClick = onDelete) { Text("删", style = Type.caption, textAlign = TextAlign.Center) }
+        TextButton(onClick = onDelete, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("删", style = Type.caption, textAlign = TextAlign.Center)
+        }
     }
 }

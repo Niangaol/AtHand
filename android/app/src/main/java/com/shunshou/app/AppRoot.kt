@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -90,7 +91,12 @@ fun AppRoot(repository: AppRepository) {
                     FocusScreen(state, repository::startFocus, repository::controlFocus, onBack = { nav.popBackStack() })
                 }
             }
-            MessageBar(state.message, state.error, repository::clearMessage)
+            MessageBar(
+                state.message,
+                state.error,
+                repository::clearMessage,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 }

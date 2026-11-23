@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -58,10 +59,15 @@ fun EmptyHint(text: String) {
 }
 
 @Composable
-fun MessageBar(message: String?, error: String?, onDismiss: () -> Unit) {
+fun MessageBar(
+    message: String?,
+    error: String?,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val text = error ?: message ?: return
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 8.dp)
+        modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 8.dp)
             .background(if (error != null) Paper.redWash else Paper.brandWash, RoundedCornerShape(Dimens.rSm))
             .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp)
     ) {
@@ -71,7 +77,9 @@ fun MessageBar(message: String?, error: String?, onDismiss: () -> Unit) {
                 style = Type.caption.copy(color = if (error != null) Paper.red else Paper.brandDeep),
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onDismiss) { Text("知道了", style = Type.caption) }
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+                Text("知道了", style = Type.caption)
+            }
         }
     }
 }

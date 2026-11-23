@@ -117,13 +117,18 @@ fun FocusScreen(
 private fun Countdown(session: FocusSession) {
     // 用 segments 与当前时间算剩余，不依赖定时器精度；tick 只为驱动重绘。
     var tick by remember(session.id) { mutableIntStateOf(0) }
-    LaunchedEffect(session.id, session.status) {
-        while (session.status == "running") {
-            delay(1_000)
-            tick += 1
-        }
+    // tick 参与读取（记得的 key + 效果的 key）：每秒 tick 变化 → 重组一次 → now 刷新，
+    // 倒计时才会真的走。原来的 while 版本只写 tick 不读，Compose 不会重组，永远停在首帧。
+    val now = remember(tick) { System.currentTimeMillis() }
+    LaunchedEffect(session.id, session.status, tick) {
+        if (session.status != "running") return@LaunchedEffect
+        // 到点后不再自我驱动，避免 00:00 之后每秒空转。
+        val total = session.minutes * 60_000L
+        val done = session.segments.sumOf { maxOf(0L, (it.end ?: System.currentTimeMillis()) - it.start) }
+        if (done >= total) return@LaunchedEffect
+        delay(1_000)
+        tick += 1
     }
-    val now = System.currentTimeMillis()
     // 每段用自己真实的 start：暂停→继续之间的间隙不算专注时长。
     val elapsedMillis = session.segments.sumOf { segment ->
         maxOf(0L, (segment.end ?: now) - segment.start)
