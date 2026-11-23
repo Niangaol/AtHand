@@ -51,7 +51,9 @@ export function buildDayBrief(
       .map((item) => ({ title: item.title, date: item.date, days: item.days, kind: item.kind })),
     expenseCents: summary.expenseCents,
     workMinutes: summary.workMinutes,
-    focusMinutes: Math.floor(focusedSecondsBetween(state.focusSessions, bounds.start, bounds.end, now) / 60),
+    focusMinutes: Math.floor(focusedSecondsBetween(
+      state.focusSessions.filter((session) => session.status !== 'cancelled'), bounds.start, bounds.end, now,
+    ) / 60),
     activeFocus: running ? { task: running.task, remainingMinutes: Math.ceil(remainingSeconds(running, now) / 60) } : null,
     warnings: scheduleWarnings(timeline).map((warning) => warning.text),
   };

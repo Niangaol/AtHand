@@ -25,6 +25,18 @@ describe('buildDayBrief', () => {
     expect(facts.countdowns[0]).toMatchObject({ days: 2 });
   });
 
+  it('counts completed focus and skips cancelled focus in focusMinutes', () => {
+    const state = createPlannerState();
+    state.focusSessions.push(
+      { id: 'f1', task: '复习', minutes: 30, startedAt: at('2026-11-23T09:00'), status: 'completed' as const,
+        segments: [{ start: at('2026-11-23T09:00'), end: at('2026-11-23T09:30') }], owner: 'web', epoch: 1 },
+      { id: 'f2', task: '英语', minutes: 25, startedAt: at('2026-11-23T20:00'), status: 'cancelled' as const,
+        segments: [{ start: at('2026-11-23T20:00'), end: at('2026-11-23T20:25') }], owner: 'web', epoch: 1 },
+    );
+    const facts = buildDayBrief(state, [], [], '2026-11-23', at('2026-11-23T22:00'));
+    expect(facts.focusMinutes).toBe(30);
+  });
+
   it('returns empty-day shape with next null after the last item', () => {
     const facts = buildDayBrief(createPlannerState(), [], [], '2026-11-23', at('2026-11-23T23:00'));
     expect(facts).toMatchObject({ date: '2026-11-23', items: [], next: null, expenseCents: 0, focusMinutes: 0, activeFocus: null });
