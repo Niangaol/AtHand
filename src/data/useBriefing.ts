@@ -31,10 +31,11 @@ export function useBriefing({ scope, state, records, calendars, today }: Input):
     const facts = buildWeekReview(state, records, calendars, today);
     return { facts, narrative: weekReviewNarrative(facts) };
   }, [scope, state, records, calendars, today]);
-  const [remote, setRemote] = useState<{ narrative: string; degraded: boolean; warning: string | null } | null>(null);
+  const [remote, setRemote] = useState<{ scope: BriefingScope; narrative: string; degraded: boolean; warning: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const active = useRef(0);
+  const applied = remote && remote.scope === scope ? remote : null;
 
   const load = useCallback(async (fresh = false): Promise<void> => {
     const ticket = ++active.current;
@@ -49,7 +50,7 @@ export function useBriefing({ scope, state, records, calendars, today }: Input):
     try {
       const value = await fetchBriefing(scope, { fresh });
       if (active.current !== ticket) return;
-      setRemote({ narrative: value.narrative, degraded: value.degraded, warning: value.warning });
+      setRemote({ scope, narrative: value.narrative, degraded: value.degraded, warning: value.warning });
     } catch (reason) {
       if (active.current !== ticket) return;
       setError(reason instanceof Error ? reason.message : '简报没有拉取成功。');
@@ -62,9 +63,9 @@ export function useBriefing({ scope, state, records, calendars, today }: Input):
 
   return {
     facts: local.facts,
-    narrative: remote?.narrative ?? local.narrative,
-    degraded: remote ? remote.degraded : true,
-    warning: remote?.warning ?? null,
+    narrative: applied?.narrative ?? local.narrative,
+    degraded: applied ? applied.degraded : true,
+    warning: applied?.warning ?? null,
     loading,
     error,
     refresh: () => load(true),
