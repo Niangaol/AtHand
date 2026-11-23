@@ -16,12 +16,18 @@ const MAX_ASSISTANTS = 20;
 
 // 云端跑在 Deno Edge Function（index.ts 里直接调 Deno.serve），但本地 `node --test` 里
 // 没有 Deno 全局，直接写 Deno.env.get 会抛 ReferenceError。这里做成安全包装：
-// 优先读平台注入的 Secret，本地退到 process.env，都没有就返回空串。
+// 优先读平台注入的 Secret，本地退到 process.env，再退到 git 忽略的本地凭据文件。
+// 本地凭据文件随 functions/ 目录一起打包进 Function，但不会进入版本库。
+let localSecrets = {};
+try {
+  localSecrets = (await import('./assistant-secrets.local.mjs')).default ?? {};
+} catch { /* 没有本地凭据文件时只依赖平台 Secret。 */ }
+
 function readEnv(key) {
   try {
-    return globalThis.Deno?.env?.get(key) ?? globalThis.process?.env?.[key] ?? '';
+    return globalThis.Deno?.env?.get(key) ?? globalThis.process?.env?.[key] ?? localSecrets[key] ?? '';
   } catch {
-    return '';
+    return localSecrets[key] ?? '';
   }
 }
 
@@ -33,7 +39,7 @@ function validLedger(value) {
     && Number.isSafeInteger(value.settings.hourlyRateCents);
 }
 
-export function application({ db, fetch: transport = globalThis.fetch }) {
+export function application({ db, fetch: transport = globalThis.fetch, env = { get: readEnv } }) {
   const USERS = 'shunshou_users';
   const USERNAME_RE = /^[\p{L}\p{N}_-]{3,32}$/u;
   const MAX_PASSWORD = 200;
@@ -55,7 +61,7 @@ export function application({ db, fetch: transport = globalThis.fetch }) {
       assistants.set(userId, cached);
       return cached;
     }
-    const assistant = createAssistant({ docs, userId, env: { get: readEnv }, fetch: transport });
+    const assistant = createAssistant({ docs, userId, env, fetch: transport });
     assistants.set(userId, assistant);
     while (assistants.size > MAX_ASSISTANTS) {
       assistants.delete(assistants.keys().next().value);

@@ -159,7 +159,13 @@ function sanitizeNarrative(text) {
   let value = String(text ?? '').replace(/```[a-z]*\n?/gi, '').trim();
   const quoted = value.match(/^["'“”‘’「」『』](.*)["'“”‘’「」『』]$/s);
   if (quoted) value = quoted[1].trim();
-  if (value.length < 5 || value.length > BRIEFING_MAX_CHARS) return '';
+  // 超长时截断到上限（优先在句号处断开），而不是整段丢弃。
+  if (value.length > BRIEFING_MAX_CHARS) {
+    const slice = value.slice(0, BRIEFING_MAX_CHARS);
+    const stop = Math.max(slice.lastIndexOf('。'), slice.lastIndexOf('！'), slice.lastIndexOf('？'));
+    value = (stop > 20 ? slice.slice(0, stop + 1) : slice).trim();
+  }
+  if (value.length < 5) return '';
   return value;
 }
 
@@ -407,14 +413,19 @@ export function createAssistant({ docs, userId, env, fetch: transport = globalTh
         { role: 'system', content: briefingPrompt(scope, factsText) },
         { role: 'user', content: scope === 'day' ? '写今天的简报。' : '写本周的复盘。' },
       ],
-      temperature: 0.3, max_tokens: 400, stream: false,
+      temperature: 0.3, max_tokens: 1200, stream: false,
       ...(settings.loopback ? { reasoning_effort: 'none' } : {}),
     };
     try {
       const response = await providerFetch(settings, '/chat/completions', { method: 'POST', body: JSON.stringify(body) }, BRIEFING_TIMEOUT_MS);
       const data = await response.json().catch(() => null);
       if (!response.ok) return degraded('模型没有正常回应，先给你规则版。');
-      const raw = data?.choices?.[0]?.message?.content;
+      // 部分推理模型把正文放进 reasoning/reasoning_content，content 为空；
+      // 优先取 content（正文），只有它为空时才回退到推理字段。
+      const message = data?.choices?.[0]?.message ?? {};
+      const raw = (typeof message.content === 'string' && message.content.trim())
+        ? message.content
+        : [message.reasoning_content, message.reasoning].find((value) => typeof value === 'string' && value.trim()) ?? '';
       const narrative = sanitizeNarrative(redacting ? redactor.rehydrateText(raw) : raw);
       if (!narrative) return degraded('模型的回复不合用，先给你规则版。');
       return finish({

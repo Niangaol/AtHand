@@ -22,3 +22,6 @@ android/local.properties
 .env
 .env.*
 !.env.example
+
+# 本地凭据，绝不入库
+functions/*.local.mjs

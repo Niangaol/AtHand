@@ -103,7 +103,8 @@ test('未登录请求 /api/assistant/settings 返回 401，不再返回 200 假�
 });
 
 test('登录后 settings 只给站点托管信息，不回传 Key', async () => {
-  const handle = application({ db: createFakeDb() });
+  // 显式传空 env：本机存在 assistant-secrets.local.mjs 时不能靠默认值断言「未配置」。
+  const handle = application({ db: createFakeDb(), env: { get: () => '' } });
   const { token } = await register(handle);
   const response = await call(handle, '/api/assistant/settings', { token });
   assert.equal(response.status, 200);
@@ -141,7 +142,7 @@ test('settings 只允许改 privacyMode，其它字段返回 400 settings_readon
 });
 
 test('站点没有配置模型时 chat 返回 503 assistant_not_configured', async () => {
-  const handle = application({ db: createFakeDb() });
+  const handle = application({ db: createFakeDb(), env: { get: () => '' } });
   const { token } = await register(handle);
   const response = await call(handle, '/api/assistant/chat', {
     method: 'POST', token, body: { messages: [{ role: 'user', content: '今天有什么' }] },
