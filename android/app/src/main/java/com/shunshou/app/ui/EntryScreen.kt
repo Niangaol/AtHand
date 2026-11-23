@@ -112,16 +112,18 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
                 }
             }
             Spacer(Modifier.height(16.dp))
-            OutlinedTextField(
-                value = amount,
-                onValueChange = { amount = it; error = null },
-                label = { Text("金额（元）") },
-                singleLine = true,
-                isError = error != null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-            )
-            Spacer(Modifier.height(12.dp))
+            if (type == "expense") {
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it; error = null },
+                    label = { Text("金额（元）") },
+                    singleLine = true,
+                    isError = error != null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                )
+                Spacer(Modifier.height(12.dp))
+            }
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
@@ -156,7 +158,7 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
                 }
             } else {
                 Spacer(Modifier.height(16.dp))
-                Text("工时收入按「时长 × 时薪」自动算钱；金额栏填的是时长（小时）。", style = Type.caption)
+                Text("工时收入按「时长 × 时薪」自动算钱，不需要单独填金额。", style = Type.caption)
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = hours,
