@@ -4,6 +4,7 @@ import { GatewayError, gatewayFetch } from './gateway';
 const settingsSchema = z.object({
   ok: z.literal(true), baseUrl: z.string(), model: z.string(), hasApiKey: z.boolean(),
   privacyMode: z.enum(['local-only', 'redact', 'off']), updatedAt: z.string().nullable(),
+  managedBy: z.literal('site').optional(),
 }).strict();
 export type AssistantSettings = Omit<z.infer<typeof settingsSchema>, 'ok'>;
 
@@ -29,10 +30,18 @@ async function read(response: Response): Promise<Record<string, unknown>> {
   return value;
 }
 
+function toSettings(data: z.infer<typeof settingsSchema>): AssistantSettings {
+  return {
+    baseUrl: data.baseUrl, model: data.model, hasApiKey: data.hasApiKey,
+    privacyMode: data.privacyMode, updatedAt: data.updatedAt,
+    ...(data.managedBy ? { managedBy: data.managedBy } : {}),
+  };
+}
+
 export async function getAssistantSettings(): Promise<AssistantSettings> {
   const parsed = settingsSchema.safeParse(await read(await gatewayFetch('/api/assistant/settings')));
   if (!parsed.success) throw new GatewayError('电脑返回的助手设置格式无效。', 'invalid_response');
-  return { baseUrl: parsed.data.baseUrl, model: parsed.data.model, hasApiKey: parsed.data.hasApiKey, privacyMode: parsed.data.privacyMode, updatedAt: parsed.data.updatedAt };
+  return toSettings(parsed.data);
 }
 
 export type AssistantSettingsInput = { baseUrl?: string; model?: string; apiKey?: string; clearApiKey?: boolean; privacyMode?: AssistantSettings['privacyMode'] };
@@ -41,7 +50,7 @@ export async function saveAssistantSettings(input: AssistantSettingsInput): Prom
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
   })));
   if (!parsed.success) throw new GatewayError('电脑返回的助手设置格式无效。', 'invalid_response');
-  return { baseUrl: parsed.data.baseUrl, model: parsed.data.model, hasApiKey: parsed.data.hasApiKey, privacyMode: parsed.data.privacyMode, updatedAt: parsed.data.updatedAt };
+  return toSettings(parsed.data);
 }
 
 export type AssistantTestResult = z.infer<typeof testSchema>['result'];

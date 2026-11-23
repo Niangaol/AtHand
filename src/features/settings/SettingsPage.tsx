@@ -445,9 +445,47 @@ export function SettingsPage() {
     </section>
     <section className="panel settings-panel" aria-labelledby="assistant-settings-title">
       <h2 id="assistant-settings-title"><Sparkles size={20} /> AI 助手</h2>
-      <p className="settings-lead">助手页用这里的模型理解你的话，并调用顺手里的工具。API Key 只保存在电脑，不会回传到浏览器；留空表示继续使用已保存的 Key。</p>
-      {cloudMode ? <p className="form-hint">云端后端不运行内置助手，下面是本机网关的做法：在电脑上执行 <code>npm run sync</code>，把服务地址改成本机网关（<code>http://127.0.0.1:18787</code>）并登录，再回到设置页配置模型和 Agent 令牌。云端账号的账本、日程和专注不受影响。</p>
-      : !connected ? <p className="form-hint">先连接电脑，再配置模型。</p> : <>
+      <p className="settings-lead">{cloudMode
+        ? '助手页用站点统一配置的模型理解你的话，并调用顺手里的工具。模型地址和 Key 由站点管理员保管，网页拿不到。'
+        : '助手页用这里的模型理解你的话，并调用顺手里的工具。API Key 只保存在电脑，不会回传到浏览器；留空表示继续使用已保存的 Key。'}</p>
+      {cloudMode ? <>
+        <div className="setting-row">
+          <Sparkles size={22} />
+          <div>
+            <h3>站点统一模型</h3>
+            <p>
+              模型 <code>{assistantModel || '未配置'}</code>
+              {assistantHasKey ? ' · Key 已由站点配置' : ' · 站点还没配置 Key'}
+              {assistantBaseUrl ? ' · 地址已隐藏' : ''}
+            </p>
+            <p className="form-hint">模型地址与 Key 由站点管理员统一配置，用户无需填写。这个模型会看到你发送的对话和工具结果。</p>
+            <label>隐私模式
+              <select value={assistantPrivacy} onChange={(event) => setAssistantPrivacy(event.target.value as AssistantSettings['privacyMode'])} disabled={assistantBusy}>
+                <option value="redact">云端脱敏（推荐）</option>
+                <option value="off">不脱敏</option>
+              </select>
+            </label>
+            <div className="setting-actions">
+              <button type="button" className="button secondary compact" disabled={assistantBusy} onClick={async () => {
+                setAssistantBusy(true);
+                setAssistantStatus('');
+                try {
+                  const saved = await saveAssistantSettings({ privacyMode: assistantPrivacy });
+                  setAssistantPrivacy(saved.privacyMode);
+                  setAssistantStatus('隐私模式已保存。');
+                } catch (error) {
+                  setAssistantStatus(error instanceof Error ? error.message : '保存失败。');
+                } finally {
+                  setAssistantBusy(false);
+                }
+              }}>保存隐私模式</button>
+              <button type="button" className="button secondary compact" disabled={assistantBusy} onClick={testAssistantModel}>测试连接</button>
+              <Link className="button secondary compact" to="/assistant">打开助手</Link>
+            </div>
+            {assistantStatus ? <p className="form-hint" role="status">{assistantStatus}</p> : null}
+          </div>
+        </div>
+      </> : !connected ? <p className="form-hint">先连接电脑，再配置模型。</p> : <>
         <form className="agent-token-form assistant-settings-form" onSubmit={saveAssistant}>
           <label>模型地址<input value={assistantBaseUrl} onChange={(event) => setAssistantBaseUrl(event.target.value)} placeholder="http://127.0.0.1:11434/v1" disabled={assistantBusy} /></label>
           <label>模型名称<input value={assistantModel} onChange={(event) => setAssistantModel(event.target.value)} placeholder="例如 ling-3.0-tiny:32k" maxLength={200} disabled={assistantBusy} /></label>
