@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPlannerState } from './planner.ts';
 import { buildEvent } from './schedule.ts';
-import { buildDayBrief, buildWeekReview } from './insights.ts';
+import { buildDayBrief, buildWeekReview, buildLedgerInsights } from './insights.ts';
 import type { RecordEntry } from './records.ts';
 
 const at = (time: string) => new Date(`${time}+08:00`).getTime();
@@ -52,5 +52,39 @@ describe('buildWeekReview', () => {
     expect(facts.categories[0]).toMatchObject({ category: '吃饭', cents: 2000, share: 67 });
     expect(facts.focusByDay).toHaveLength(7);
     expect(facts.focusByDay[0]).toMatchObject({ date: '2026-11-23', minutes: 50 });
+  });
+});
+
+describe('buildLedgerInsights', () => {
+  it('covers the window, compares to the previous window, and ranks categories', () => {
+    const records = [
+      record({ id: 'a', date: '2026-11-22', amountCents: 2000, category: '吃饭' }),
+      record({ id: 'b', date: '2026-11-21', amountCents: 1500, category: '吃饭' }),
+      record({ id: 'c', date: '2026-11-10', amountCents: 6000, category: '学习', title: '教材' }),
+      record({ id: 'w', date: '2026-11-20', amountCents: 8000, type: 'work', workplaceId: 'u', startTime: '09:00', endTime: '13:00', durationMinutes: 240, hourlyRateCents: 2000, title: '兼职' } as RecordEntry),
+    ];
+    const facts = buildLedgerInsights(records, '2026-11-23', 7);
+    expect(facts.range).toMatchObject({ from: '2026-11-17', to: '2026-11-23', days: 7 });
+    expect(facts.expenseCents).toBe(3500);
+    expect(facts.previousExpenseCents).toBe(6000);
+    expect(facts.deltaPct).toBe(-42);
+    expect(facts.categories).toEqual([{ category: '吃饭', cents: 3500, share: 100 }]);
+    expect(facts.anomalies).toEqual([]);
+  });
+
+  it('flags single expenses above three times the daily average', () => {
+    const facts = buildLedgerInsights([
+      record({ id: 'a', date: '2026-11-22', amountCents: 2000, category: '吃饭' }),
+      record({ id: 'big', date: '2026-11-23', title: '羽绒服', amountCents: 30000, category: '日用' }),
+    ], '2026-11-23', 7);
+    expect(facts.anomalies).toHaveLength(1);
+    expect(facts.anomalies[0].title).toBe('羽绒服');
+    expect(facts.topExpenses[0]).toMatchObject({ title: '羽绒服', amountCents: 30000 });
+  });
+
+  it('returns deltaPct null when the previous window is empty', () => {
+    const facts = buildLedgerInsights([record({ amountCents: 1000 })], '2026-11-23', 7);
+    expect(facts.previousExpenseCents).toBe(0);
+    expect(facts.deltaPct).toBeNull();
   });
 });

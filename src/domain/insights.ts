@@ -113,3 +113,53 @@ export function buildWeekReview(
     topExpense: top ? { title: top.title, amountCents: top.amountCents, date: top.date } : null,
   };
 }
+
+export type LedgerInsights = {
+  range: { from: string; to: string; days: number };
+  expenseCents: number;
+  incomeCents: number;
+  netCents: number;
+  dailyAverageExpenseCents: number;
+  categories: { category: string; cents: number; share: number }[];
+  previousExpenseCents: number;
+  deltaPct: number | null;
+  topExpenses: { title: string; amountCents: number; date: string; category: string }[];
+  anomalies: { title: string; amountCents: number; date: string; reason: string }[];
+};
+
+export function buildLedgerInsights(records: readonly RecordEntry[], today: string, days = 30): LedgerInsights {
+  const span = Math.min(90, Math.max(7, Math.round(days)));
+  const from = shiftDate(today, -(span - 1));
+  const previousFrom = shiftDate(from, -span);
+  const previousTo = shiftDate(from, -1);
+  const real = realRecords(records);
+  const window = real.filter((item) => item.date >= from && item.date <= today);
+  const previous = real.filter((item) => item.date >= previousFrom && item.date <= previousTo);
+  const summary = summarize(window, from, today);
+  const expenseCents = summary.expenseCents;
+  const dailyAverage = Math.floor(expenseCents / span);
+  const expenses = window.filter((item): item is Extract<RecordEntry, { type: 'expense' }> => item.type === 'expense');
+  const categories = expenseCategories
+    .map((category) => {
+      const cents = expenses.filter((item) => item.category === category).reduce((sum, item) => sum + item.amountCents, 0);
+      return { category, cents, share: expenseCents ? Math.round((cents / expenseCents) * 100) : 0 };
+    })
+    .filter((item) => item.cents > 0)
+    .sort((a, b) => b.cents - a.cents);
+  const previousExpenseCents = summarize(previous, previousFrom, previousTo).expenseCents;
+  const sorted = [...expenses].sort((a, b) => b.amountCents - a.amountCents);
+  const threshold = Math.max(dailyAverage * 3, 5000);
+  return {
+    range: { from, to: today, days: span },
+    expenseCents, incomeCents: summary.incomeCents, netCents: summary.netCents,
+    dailyAverageExpenseCents: dailyAverage,
+    categories,
+    previousExpenseCents,
+    deltaPct: previousExpenseCents ? Math.round(((expenseCents - previousExpenseCents) / previousExpenseCents) * 100) : null,
+    topExpenses: sorted.slice(0, 3).map((item) => ({ title: item.title, amountCents: item.amountCents, date: item.date, category: item.category })),
+    anomalies: sorted.filter((item) => item.amountCents >= threshold).slice(0, 3).map((item) => ({
+      title: item.title, amountCents: item.amountCents, date: item.date,
+      reason: `单笔 ¥${(item.amountCents / 100).toFixed(2)}，超过日均的 3 倍`,
+    })),
+  };
+}
