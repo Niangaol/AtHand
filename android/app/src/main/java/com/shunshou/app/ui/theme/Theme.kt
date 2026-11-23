@@ -1,6 +1,8 @@
 package com.shunshou.app.ui.theme
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -29,18 +31,46 @@ object Paper {
 private val scheme = lightColorScheme(
     primary = Paper.brand,
     onPrimary = Color.White,
+    primaryContainer = Paper.brandWash,
+    onPrimaryContainer = Paper.brandDeep,
     secondary = Paper.steel,
+    onSecondary = Color.White,
+    secondaryContainer = Paper.page,
+    onSecondaryContainer = Paper.inkSoft,
+    tertiary = Paper.red,
+    onTertiary = Color.White,
     background = Paper.page,
     onBackground = Paper.ink,
     surface = Paper.sheet,
     onSurface = Paper.ink,
     surfaceVariant = Paper.page,
     onSurfaceVariant = Paper.inkSoft,
+    surfaceContainer = Paper.sheet,
+    surfaceContainerHigh = Paper.sheet,
+    surfaceContainerHighest = Paper.sheet,
+    surfaceContainerLow = Paper.page,
+    surfaceContainerLowest = Paper.sheet,
+    outline = Paper.ruleStrong,
+    outlineVariant = Paper.rule,
     error = Paper.red,
+    onError = Color.White,
+    errorContainer = Paper.redWash,
+    onErrorContainer = Paper.red,
+    inverseSurface = Paper.ink,
+    inverseOnSurface = Paper.sheet,
+    scrim = Color(0xFF000000),
 )
 
-val Serif = FontFamily.Serif
-val Sans = FontFamily.SansSerif
+private val shapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(4.dp),
+    medium = RoundedCornerShape(6.dp),
+    large = RoundedCornerShape(8.dp),
+    extraLarge = RoundedCornerShape(8.dp),
+)
+
+private val Serif = FontFamily.Serif
+private val Sans = FontFamily.SansSerif
 
 object Type {
     val pageTitle = TextStyle(fontFamily = Serif, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, lineHeight = 34.sp, color = Paper.ink)
@@ -60,5 +90,5 @@ object Dimens {
 
 @Composable
 fun ShunshouTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, shapes = shapes, content = content)
 }
