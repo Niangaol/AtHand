@@ -65,6 +65,19 @@ describe('buildWeekReview', () => {
     expect(facts.focusByDay).toHaveLength(7);
     expect(facts.focusByDay[0]).toMatchObject({ date: '2026-11-23', minutes: 50 });
   });
+
+  it('skips cancelled focus in focusByDay so it agrees with thisWeek.focusMinutes', () => {
+    const state = createPlannerState();
+    state.focusSessions.push(
+      { id: 'f1', task: '复习', minutes: 40, startedAt: at('2026-11-24T09:00'), status: 'completed' as const,
+        segments: [{ start: at('2026-11-24T09:00'), end: at('2026-11-24T09:40') }], owner: 'web', epoch: 1 },
+      { id: 'f2', task: '英语', minutes: 30, startedAt: at('2026-11-24T14:00'), status: 'cancelled' as const,
+        segments: [{ start: at('2026-11-24T14:00'), end: at('2026-11-24T14:30') }], owner: 'web', epoch: 1 },
+    );
+    const facts = buildWeekReview(state, [], [], '2026-11-23', at('2026-11-24T22:00'));
+    expect(facts.focusByDay.find((day) => day.date === '2026-11-24')).toMatchObject({ minutes: 40 });
+    expect(facts.thisWeek.focusMinutes).toBe(40);
+  });
 });
 
 describe('buildLedgerInsights', () => {

@@ -99,7 +99,7 @@ export function buildWeekReview(
     .filter((item) => item.cents > 0)
     .sort((a, b) => b.cents - a.cents);
   const top = [...spend].sort((a, b) => b.amountCents - a.amountCents)[0];
-  const sessions = state.focusSessions;
+  const sessions = state.focusSessions.filter((session) => session.status !== 'cancelled');
   return {
     start, end,
     thisWeek: weekBucket(state, real, start, end, now),
