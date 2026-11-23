@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createPlannerState } from './planner.ts';
 import { buildEvent } from './schedule.ts';
-import { buildDayBrief, buildWeekReview, buildLedgerInsights, buildFocusInsights } from './insights.ts';
+import { buildDayBrief, buildWeekReview, buildLedgerInsights, buildFocusInsights, dayBriefNarrative, weekReviewNarrative } from './insights.ts';
 import type { RecordEntry } from './records.ts';
 
 const at = (time: string) => new Date(`${time}+08:00`).getTime();
@@ -118,5 +118,25 @@ describe('buildFocusInsights', () => {
     const facts = buildFocusInsights(createPlannerState(), '2026-11-23', 7, at('2026-11-23T22:00'));
     expect(facts).toMatchObject({ totalMinutes: 0, sessions: 0, streakDays: 0, bestDay: null, topTasks: [] });
     expect(facts.daily).toHaveLength(7);
+  });
+});
+
+describe('template narratives', () => {
+  it('covers schedule, spend, focus and countdown for the day', () => {
+    const state = createPlannerState();
+    state.events.push(buildEvent({ id: 'e1', kind: 'course', title: '高等数学', location: 'A101', start: '2026-11-23T14:00', end: '2026-11-23T16:00', allDay: false, timeZone: 'Asia/Shanghai' }));
+    const facts = buildDayBrief(state, [record({ amountCents: 1850 })], [], '2026-11-23', at('2026-11-23T08:00'));
+    const text = dayBriefNarrative(facts);
+    expect(text).toContain('1 件事');
+    expect(text).toContain('高等数学');
+    expect(text).toContain('18.50');
+    expect(text.endsWith('。')).toBe(true);
+  });
+
+  it('gives an empty-day sentence and a week comparison', () => {
+    const empty = dayBriefNarrative(buildDayBrief(createPlannerState(), [], [], '2026-11-23', at('2026-11-23T08:00')));
+    expect(empty).toContain('还没有安排');
+    const week = buildWeekReview(createPlannerState(), [record({ date: '2026-11-23', amountCents: 2000 })], [], '2026-11-23', at('2026-11-23T12:00'));
+    expect(weekReviewNarrative(week)).toContain('吃饭');
   });
 });

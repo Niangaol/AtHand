@@ -224,3 +224,40 @@ export function buildFocusInsights(state: PlannerState, today: string, days = 30
     topTasks: [...tasks.entries()].map(([task, minutes]) => ({ task, minutes })).sort((a, b) => b.minutes - a.minutes).slice(0, 3),
   };
 }
+
+const yuan = (cents: number) => (cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const clock = (stamp: number) => new Date(stamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+const sentence = (text: string) => (text.endsWith('。') ? text : `${text}。`);
+
+export function dayBriefNarrative(facts: DayBrief): string {
+  const lines: string[] = [];
+  if (!facts.items.length) lines.push('今天还没有安排，可以先歇一会儿。');
+  else {
+    const next = facts.next
+      ? `下一项是${facts.next.title}（${clock(facts.next.start)}）`
+      : `今天最后一项已经结束`;
+    lines.push(`今天 ${facts.items.length} 件事，${next}。`);
+  }
+  const spend = facts.expenseCents ? `今天支出 ¥${yuan(facts.expenseCents)}` : '今天还没有支出';
+  const focus = facts.focusMinutes ? `，专注 ${facts.focusMinutes} 分钟。` : '，还没开始专注。';
+  lines.push(`${spend}${focus}`);
+  if (facts.countdowns.length) {
+    const nearest = facts.countdowns[0];
+    lines.push(`最近 ${nearest.days} 天是${nearest.title}，别忘了。`);
+  }
+  if (facts.warnings.length) lines.push(sentence(facts.warnings[0]));
+  return lines.join('');
+}
+
+export function weekReviewNarrative(facts: WeekReview): string {
+  const lines: string[] = [];
+  lines.push(`本周支出 ¥${yuan(facts.thisWeek.expenseCents)}，上周 ¥${yuan(facts.lastWeek.expenseCents)}。`);
+  if (facts.categories.length) {
+    const top = facts.categories[0];
+    lines.push(`花得最多的是${top.category}，占 ${top.share}%。`);
+  }
+  if (facts.thisWeek.focusMinutes) lines.push(`本周专注 ${facts.thisWeek.focusMinutes} 分钟，共 ${facts.thisWeek.focusSessions} 段。`);
+  else lines.push('本周还没有专注记录。');
+  if (facts.countdowns.length) lines.push(`未来一周最要紧的是${facts.countdowns[0].title}，还有 ${facts.countdowns[0].days} 天。`);
+  return lines.join('');
+}
