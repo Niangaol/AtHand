@@ -92,7 +92,7 @@ data class RecordEntry(
   val workplaceId: String?,                // work
   val startTime: String?, val endTime: String?,
   val durationMinutes: Int?, val hourlyRateCents: Long?,
-  val source: String,                      // demo | manual | notification
+  val source: String,                      // demo | manual | school | import
   val updatedAt: String?, val deletedAt: String?
 )
 data class Workplace(val id: String, val name: String, val hourlyRateCents: Long, val description: String, val source: String)
@@ -141,7 +141,7 @@ Tab 我的   → 账号、采集开关、同步状态、配对码、退出
 
 **日程**：本周 7 天纵向列表（不是横向周视图，手机竖屏更易读）；今天是淡绿底 + 红刻度；每条显示「时间 · 标题 · 地点」。
 
-**专注**：大号倒计时、任务名、开始/暂停/完成；后台计时用 `startedAt + segments` 计算，不依赖定时器精度。`focus.start` / `focus.control` 需带 `owner`（本机安装 ID，首次启动生成并持久化）和 `epoch`（服务端返回的当前专注版本号，客户端原样回传），用于多设备抢占判定。
+**专注**：大号倒计时、任务名、开始/暂停/完成；后台计时用 `startedAt + segments` 计算，不依赖定时器精度。`focus.start` 需带 `owner`（本机安装 ID，首次启动生成并持久化）；`focus.control` 需带 `owner` 与 `epoch`（从当前会话对象读取；`startFocus` 初始为 1，每次 `takeover` 加一），用于多设备抢占判定。
 
 **我的**：账号名 + 注册时间、采集开关（无障碍授权状态）、最近同步时间、生成配对码、退出登录。
 
