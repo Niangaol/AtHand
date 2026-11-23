@@ -115,8 +115,9 @@ test('登录后 settings 只给站点托管信息，不回传 Key', async () => 
   assert.equal(body.hasApiKey, false);
   assert.equal(body.privacyMode, 'redact');
   assert.equal(body.updatedAt, null);
-  assert.equal(JSON.stringify(body).toLowerCase().includes('apikey"'), true);
-  assert.equal('apiKey' in body, false);
+  // 字段面就是这 7 个：没有 apiKey，也没有任何能把 Key 带出来的字段。
+  assert.deepEqual(Object.keys(body).sort(),
+    ['baseUrl', 'hasApiKey', 'managedBy', 'model', 'ok', 'privacyMode', 'updatedAt']);
 });
 
 test('settings 只允许改 privacyMode，其它字段返回 400 settings_readonly', async () => {
