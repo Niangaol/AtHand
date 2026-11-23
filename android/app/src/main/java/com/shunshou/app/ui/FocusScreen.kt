@@ -76,7 +76,7 @@ fun FocusScreen(
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(
-                    onClick = { onStart(task.ifBlank { "专注" }, minutes.toIntOrNull() ?: 25) },
+                    onClick = { onStart(task.ifBlank { "专注" }, (minutes.toIntOrNull() ?: 25).coerceIn(1, 180)) },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Paper.brand),
                 ) { Text("开始", style = Type.body) }
