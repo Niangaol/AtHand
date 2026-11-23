@@ -118,10 +118,51 @@ function briefingPrompt(scope, factsText) {
     `你是「顺手」的简报助手。下面是代码算好的${scope === 'day' ? '今日简报' : '本周复盘'}数据（JSON）。`,
     '规则：',
     '1. 只根据这些数据写 3 到 5 句简体中文，不要编造数据里没有的事。',
-    '2. 金额说“元”，时间用 HH:MM；不要输出 JSON、列表符号或标题。',
+    '2. 金额和时间已经在数据里格式化好，直接引用，不要自己换算。',
     '3. 先给结论，再给一两句提醒；不确定就不提。',
+    '4. 不要输出 JSON、列表符号或标题。',
     factsText,
   ].join('\n');
+}
+
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const EPOCH_MIN = 946684800000;
+
+const isStamp = (value) => typeof value === 'number' && Number.isFinite(value) && value >= EPOCH_MIN;
+
+const yuanText = (cents) => (Number(cents) / 100).toFixed(2);
+
+function clockText(stamp) {
+  const date = new Date(stamp);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+// 模型只负责措辞，不做算术：分换元、时间戳换 HH:MM 都在这里做完，
+// 发往模型的投影里不再出现分或原始毫秒时间戳。
+function promptFacts(value) {
+  if (Array.isArray(value)) return value.map((item) => promptFacts(item));
+  if (!value || typeof value !== 'object') return value;
+  const output = {};
+  let startStamp = null;
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === 'number' && key.endsWith('Cents')) {
+      output[`${key.slice(0, -'Cents'.length)}Yuan`] = yuanText(item);
+      continue;
+    }
+    if (typeof item === 'number' && key === 'cents') {
+      output.yuan = yuanText(item);
+      continue;
+    }
+    // 任何够大的整数都只可能是毫秒时间戳，一律换成 HH:MM。
+    if (isStamp(item)) {
+      output[`${key}Clock`] = clockText(item);
+      if (startStamp === null && /(^|interval)start$/i.test(key)) startStamp = item;
+      continue;
+    }
+    output[key] = promptFacts(item);
+  }
+  if (startStamp !== null) output.weekday = WEEKDAYS[new Date(startStamp).getDay()];
+  return output;
 }
 
 function sanitizeNarrative(text) {
@@ -318,7 +359,8 @@ export function createAssistant({ directory, getTools, callTool, getBriefFacts }
 
     const redacting = !loopback && settings.privacyMode === 'redact';
     const redactor = redacting ? createRedactor() : null;
-    const factsText = JSON.stringify(redacting ? redactFacts(redactor, facts) : facts);
+    const projected = promptFacts(facts);
+    const factsText = JSON.stringify(redacting ? redactFacts(redactor, projected) : projected);
     const body = {
       model: settings.model,
       messages: [
