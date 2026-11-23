@@ -177,11 +177,15 @@ test('cloud mode exposes the assistant with a site-managed model', async ({ page
     return route.fulfill({ json: { ok: true, reply: '今天有两项安排。', trace: [] } });
   });
   await page.route('**/api/me', (route) => route.fulfill({ json: { ok: true, user: { id: 'u1', username: '甲' } } }));
-  await page.route('**/api/ledger', (route) => route.fulfill({
-    json: route.request().method() === 'GET'
-      ? { ok: true, ledger: null, updatedAt: null }
-      : { ok: true, updatedAt: '2026-11-23T00:00:00.000Z' },
-  }));
+  const ledgerMethods: string[] = [];
+  await page.route('**/api/ledger', (route) => {
+    ledgerMethods.push(route.request().method());
+    return route.fulfill({
+      json: route.request().method() === 'GET'
+        ? { ok: true, ledger: null, updatedAt: null }
+        : { ok: true, updatedAt: '2026-11-23T00:00:00.000Z' },
+    });
+  });
   await page.route('**/api/planner', (route) => route.fulfill({
     json: { state: cloudPlannerState, revision: 0, serverId: 'cloud-e2e', entityVersions: {} },
   }));
@@ -196,4 +200,7 @@ test('cloud mode exposes the assistant with a site-managed model', async ({ page
   await page.getByRole('button', { name: '发送' }).click();
   await expect(page.getByText('今天有两项安排。')).toBeVisible();
   expect(chatUrls).toEqual(['https://demo.qoder.zone/functions/v1/app/api/assistant/chat']);
+  expect(ledgerMethods).toEqual(expect.arrayContaining(['GET', 'PUT']));
+  // 云端 planner 文档被接受并落到本机信封，说明 mock 形状与 remoteDocumentSchema 兼容。
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('shunshou.planner.v1') ?? 'null')?.serverId)).toBe('cloud-e2e');
 });
