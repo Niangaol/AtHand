@@ -399,7 +399,7 @@ export function SettingsPage() {
       <div className="setting-row"><Smartphone size={22} /><div><h3>手机采集</h3>{cloudMode
         ? <p>扫码配对只在电脑上的本机网关可用，云端账号不支持。手机 App 用同一个账号登录后，账本和日程直接走云端，不需要配对。</p>
         : <p>让手机 App 扫码配对，样本会自动传到这里并导入；只导入已确认的支出，收入和待确认会跳过。也可以继续用地址和口令手动同步。</p>}
-        <div className="setting-actions"><a className="button secondary compact" href="/downloads/shunshou.apk" download="shunshou.apk">下载安卓 APK</a></div>
+        <div className="setting-actions"><a className="button secondary compact" href="https://github.com/Niangaol/AtHand-Releases/releases/latest/download/shunshou.apk">下载安卓 APK</a></div>
         {cloudMode ? null : <>
           <div className="setting-actions">
             <button type="button" className="button secondary compact" disabled={pairingBusy || blocked || !connected} onClick={startPairing}>{pairingBusy ? '正在生成' : '手机扫码配对'}</button>

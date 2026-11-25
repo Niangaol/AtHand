@@ -28,8 +28,7 @@ it('offers an Android APK download in the phone collection settings', () => {
   render(<MemoryRouter initialEntries={['/settings']}><RecordsProvider today="2026-11-23"><App /></RecordsProvider></MemoryRouter>);
 
   const download = screen.getByRole('link', { name: '下载安卓 APK' });
-  expect(download).toHaveAttribute('href', '/downloads/shunshou.apk');
-  expect(download).toHaveAttribute('download', 'shunshou.apk');
+  expect(download).toHaveAttribute('href', 'https://github.com/Niangaol/AtHand-Releases/releases/latest/download/shunshou.apk');
   expect(download.closest('.setting-row')).toHaveTextContent('手机采集');
 });
 it('cloud mode shows read-only model info instead of key inputs', async () => {

@@ -14,7 +14,7 @@ android/build/
 android/app/build/
 android/local.properties
 *.apk
-!public/downloads/shunshou.apk
+!downloads/shunshou.apk
 *.aab
 *.jks
 *.keystore
