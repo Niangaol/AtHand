@@ -24,6 +24,14 @@ it('saves a custom conversion rate and requires confirmation before clearing exa
   expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).records).toEqual([]);
   expect(await screen.findByText('本机账本')).toBeInTheDocument();
 });
+it('offers an Android APK download in the phone collection settings', () => {
+  render(<MemoryRouter initialEntries={['/settings']}><RecordsProvider today="2026-11-23"><App /></RecordsProvider></MemoryRouter>);
+
+  const download = screen.getByRole('link', { name: '下载安卓 APK' });
+  expect(download).toHaveAttribute('href', '/downloads/shunshou.apk');
+  expect(download).toHaveAttribute('download', 'shunshou.apk');
+  expect(download.closest('.setting-row')).toHaveTextContent('手机采集');
+});
 it('cloud mode shows read-only model info instead of key inputs', async () => {
   localStorage.setItem('shunshou.gateway.url', 'https://demo.qoder.zone/functions/v1/app');
   localStorage.setItem('shunshou.gateway.token', 'cloud-token');
