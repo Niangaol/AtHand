@@ -1,25 +1,14 @@
 package com.shunshou.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,7 +19,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.shunshou.app.data.AppUiState
 import com.shunshou.app.data.RecordEntry
+import com.shunshou.app.ui.components.JournalPage
 import com.shunshou.app.ui.components.PageHeader
+import com.shunshou.app.ui.components.PaperChoiceChip
+import com.shunshou.app.ui.components.PaperNote
+import com.shunshou.app.ui.components.PaperPrimaryButton
+import com.shunshou.app.ui.components.PaperSecondaryButton
+import com.shunshou.app.ui.components.PaperTextField
+import com.shunshou.app.ui.components.SectionHeading
 import com.shunshou.app.ui.theme.Dimens
 import com.shunshou.app.ui.theme.Paper
 import com.shunshou.app.ui.theme.Type
@@ -53,9 +49,6 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
     var error by remember { mutableStateOf<String?>(null) }
 
     fun submit() {
-        // 网页端 isLedgerState 要求 date 是合法的 yyyy-MM-dd 且在 2000–2100 之间，
-        // 不合规会让整份账本被拒收。ISO_LOCAL_DATE 同时校验格式与日期真实性
-        // （2026/11/23 与 2026-02-30 都会抛异常）。
         val parsedDate = runCatching {
             LocalDate.parse(date.trim(), DateTimeFormatter.ISO_LOCAL_DATE)
         }.getOrNull()
@@ -75,8 +68,6 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
                 )
             )
         } else {
-            // 网页端 isLedgerState 要求 work 记录的 workplaceId 必须命中 workplaces[]，
-            // 不存在 id 会让整份账本被拒收，所以没有兼职单位时宁可不保存。
             val workplace = state.ledger.workplaces.firstOrNull()
             if (workplace == null) { error = "还没有兼职单位，请先在网页上添加。"; return }
             val durationMinutes = hours.trim().toBigDecimalOrNull()
@@ -87,8 +78,6 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
                 error = "时长需在 1 分钟到 24 小时之间。"; return
             }
             if (rateCents == null || rateCents <= 0) { error = "时薪需大于 0。"; return }
-            // 金额必须严格等于「时长 × 时薪 / 60」（网页端会逐条校验），用整数运算四舍五入，
-            // 与 Math.round(x / 60.0) 对正数等价，但不受浮点精度影响。
             val amountCents = (durationMinutes.toLong() * rateCents + 30) / 60
             onSave(
                 RecordEntry(
@@ -103,42 +92,42 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
         onBack()
     }
 
-    Column(Modifier.fillMaxSize().background(Paper.page).verticalScroll(rememberScrollState())) {
-        PageHeader(title = "记一笔", action = { TextButton(onClick = onBack) { Text("取消", style = Type.caption) } })
-        Column(Modifier.padding(horizontal = Dimens.gutter, vertical = 16.dp)) {
+    JournalPage {
+        PageHeader(
+            title = "记一笔",
+            action = { PaperSecondaryButton("取消", onBack) },
+        )
+        PaperNote(
+            modifier = Modifier.padding(horizontal = Dimens.gutter, vertical = 18.dp),
+            tapeColor = Paper.tape,
+        ) {
+            SectionHeading("写一张账页")
+            Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("expense" to "支出", "work" to "收入").forEach { (value, label) ->
-                    FilterChip(
+                    PaperChoiceChip(
+                        label = label,
                         selected = type == value,
                         onClick = { type = value },
-                        label = { Text(label, style = Type.caption) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Paper.brandWash,
-                            selectedLabelColor = Paper.brandDeep,
-                        ),
-                        modifier = Modifier.heightIn(min = 48.dp),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
             Spacer(Modifier.height(16.dp))
             if (type == "expense") {
-                OutlinedTextField(
+                PaperTextField(
                     value = amount,
                     onValueChange = { amount = it; error = null },
-                    label = { Text("金额（元）") },
-                    singleLine = true,
+                    label = "金额（元）",
                     isError = error != null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 )
                 Spacer(Modifier.height(12.dp))
             }
-            OutlinedTextField(
+            PaperTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("备注（可空）") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                label = "备注（可空）",
             )
             if (type == "expense") {
                 Spacer(Modifier.height(16.dp))
@@ -146,22 +135,22 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     categories.take(3).forEach { name ->
-                        FilterChip(
+                        PaperChoiceChip(
+                            label = name,
                             selected = category == name,
                             onClick = { category = name },
-                            label = { Text(name, style = Type.caption) },
-                            modifier = Modifier.heightIn(min = 48.dp),
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     categories.drop(3).forEach { name ->
-                        FilterChip(
+                        PaperChoiceChip(
+                            label = name,
                             selected = category == name,
                             onClick = { category = name },
-                            label = { Text(name, style = Type.caption) },
-                            modifier = Modifier.heightIn(min = 48.dp),
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -169,42 +158,32 @@ fun EntryScreen(state: AppUiState, onSave: (RecordEntry) -> Unit, onBack: () -> 
                 Spacer(Modifier.height(16.dp))
                 Text("工时收入按「时长 × 时薪」自动算钱，不需要单独填金额。", style = Type.caption)
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                PaperTextField(
                     value = hours,
                     onValueChange = { hours = it; error = null },
-                    label = { Text("时长（小时）") },
-                    singleLine = true,
+                    label = "时长（小时）",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                PaperTextField(
                     value = rate,
                     onValueChange = { rate = it; error = null },
-                    label = { Text("时薪（元）") },
-                    singleLine = true,
+                    label = "时薪（元）",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 )
             }
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
+            PaperTextField(
                 value = date,
                 onValueChange = { date = it; error = null },
-                label = { Text("日期") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                label = "日期",
             )
             error?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, style = Type.caption.copy(color = Paper.red))
             }
             Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = { submit() },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Paper.brand),
-            ) { Text("保存", style = Type.body) }
+            PaperPrimaryButton("保存", ::submit)
         }
     }
 }

@@ -38,7 +38,7 @@ class SessionStore(context: Context) {
         // 下一次 PUT 就把它整份写进新账号。
         prefs.edit()
             .remove(KEY_BASE).remove(KEY_TOKEN).remove(KEY_EXPIRES).remove(KEY_USERNAME)
-            .remove("cache_ledger").remove("cache_planner").remove("cache_ledgerUpdatedAt")
+            .remove("cache_ledger").remove("cache_planner").remove("cache_calendar").remove("cache_ledgerUpdatedAt")
             .apply()
     }
 

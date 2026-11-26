@@ -44,6 +44,23 @@ data class PlannerSnapshot(
     companion object { val EMPTY = PlannerSnapshot(0, emptyList(), emptyList(), 25) }
 }
 
+data class CalendarSnapshot(
+    val sourceId: String,
+    val revision: Int,
+    val rangeStart: Long,
+    val rangeEnd: Long,
+    val fetchedAt: Long,
+    val calendarAvailable: Boolean,
+    val complete: Boolean,
+    val events: List<PlannerEvent>,
+)
+
+data class CalendarState(
+    val sources: List<CalendarSnapshot> = emptyList(),
+    val status: String = "",
+    val lastSuccess: Long = 0L,
+)
+
 object Models {
     private val VALID_SOURCES = setOf("demo", "manual", "school", "import")
     private val EXPENSE_CATEGORIES = setOf("吃饭", "交通", "日用", "娱乐", "学习", "其他")
@@ -189,6 +206,89 @@ object Models {
             put("serviceEntries", JSONArray())
             put("preferences", JSONObject().put("focusMinutes", snapshot.focusMinutes))
             put("reminderReceipts", JSONArray())
+        })
+    }
+
+    fun parseCalendar(body: JSONObject): List<CalendarSnapshot> =
+        (body.optJSONArray("sources") ?: JSONArray()).objects().map(::parseCalendarSnapshot)
+
+    fun parseCalendarSnapshot(row: JSONObject): CalendarSnapshot = CalendarSnapshot(
+        sourceId = row.optString("sourceId"),
+        revision = row.optInt("revision"),
+        rangeStart = row.optLong("rangeStart"),
+        rangeEnd = row.optLong("rangeEnd"),
+        fetchedAt = row.optLong("fetchedAt"),
+        calendarAvailable = row.optBoolean("calendarAvailable"),
+        complete = row.optBoolean("complete"),
+        events = (row.optJSONArray("events") ?: JSONArray()).objects().map { event ->
+            PlannerEvent(
+                id = event.optString("id"), title = event.optString("title"),
+                kind = event.optString("kind").ifBlank { "event" },
+                location = event.optString("location"), start = event.optLong("start"),
+                end = event.optLong("end"), allDay = event.optBoolean("allDay"),
+                source = event.optString("source").ifBlank { "calendar" },
+            )
+        },
+    )
+
+    fun calendarUploadJson(
+        sourceId: String,
+        requestId: String,
+        baseRevision: Int,
+        rangeStart: Long,
+        rangeEnd: Long,
+        fetchedAt: Long,
+        calendarAvailable: Boolean,
+        complete: Boolean,
+        events: List<PlannerEvent>,
+    ): JSONObject = JSONObject().apply {
+        put("sourceId", sourceId)
+        put("requestId", requestId)
+        put("baseRevision", baseRevision)
+        put("rangeStart", rangeStart)
+        put("rangeEnd", rangeEnd)
+        put("fetchedAt", fetchedAt)
+        put("calendarAvailable", calendarAvailable)
+        put("complete", complete)
+        put("events", JSONArray().apply {
+            events.forEach { event ->
+                put(JSONObject().apply {
+                    put("id", event.id); put("title", event.title); put("kind", event.kind)
+                    put("location", event.location); put("start", event.start); put("end", event.end)
+                    put("allDay", event.allDay); put("timeZone", java.util.TimeZone.getDefault().id)
+                    put("source", "calendar"); put("sourceId", sourceId)
+                })
+            }
+        })
+    }
+
+    fun parseCalendarState(body: JSONObject): CalendarState = CalendarState(
+        sources = parseCalendar(body),
+        status = body.optString("status"),
+        lastSuccess = body.optLong("lastSuccess"),
+    )
+
+    fun calendarStateJson(state: CalendarState): JSONObject = JSONObject().apply {
+        put("status", state.status)
+        put("lastSuccess", state.lastSuccess)
+        put("sources", JSONArray().apply {
+            state.sources.forEach { source ->
+                put(JSONObject().apply {
+                    put("sourceId", source.sourceId); put("revision", source.revision)
+                    put("rangeStart", source.rangeStart); put("rangeEnd", source.rangeEnd)
+                    put("fetchedAt", source.fetchedAt); put("calendarAvailable", source.calendarAvailable)
+                    put("complete", source.complete)
+                    put("events", JSONArray().apply {
+                        source.events.forEach { event ->
+                            put(JSONObject().apply {
+                                put("id", event.id); put("title", event.title); put("kind", event.kind)
+                                put("location", event.location); put("start", event.start); put("end", event.end)
+                                put("allDay", event.allDay); put("source", event.source)
+                            })
+                        }
+                    })
+                })
+            }
         })
     }
 

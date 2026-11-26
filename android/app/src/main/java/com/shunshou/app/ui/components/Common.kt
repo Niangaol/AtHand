@@ -1,7 +1,7 @@
 package com.shunshou.app.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,18 +27,20 @@ fun PageHeader(
     subtitle: String? = null,
     action: (@Composable () -> Unit)? = null,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column {
-            Text(title, style = Type.pageTitle)
-            if (subtitle != null) Text(subtitle, style = Type.caption)
+    Column {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+        ) {
+            Column {
+                Text(title, style = Type.pageTitle)
+                if (subtitle != null) Text(subtitle, style = Type.journalNote)
+            }
+            action?.invoke()
         }
-        action?.invoke()
+        TicketDivider(Modifier.padding(horizontal = Dimens.gutter))
     }
-    RuleLine()
 }
 
 @Composable
@@ -52,10 +54,8 @@ fun FigureText(text: String, style: TextStyle = Type.figure) {
 }
 
 @Composable
-fun EmptyHint(text: String) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 28.dp)) {
-        Text(text, style = Type.caption)
-    }
+fun EmptyHint(text: String, modifier: Modifier = Modifier) {
+    EmptyPaperHint(text, modifier)
 }
 
 @Composable
@@ -66,15 +66,17 @@ fun MessageBar(
     modifier: Modifier = Modifier,
 ) {
     val text = error ?: message ?: return
+    val shape = RoundedCornerShape(Dimens.rMd)
     Box(
         modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 8.dp)
-            .background(if (error != null) Paper.redWash else Paper.brandWash, RoundedCornerShape(Dimens.rSm))
-            .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp)
+            .background(if (error != null) Paper.redWash else Paper.brandWash, shape)
+            .border(1.dp, if (error != null) Paper.red.copy(alpha = 0.25f) else Paper.sageDeep.copy(alpha = 0.35f), shape)
+            .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text,
-                style = Type.caption.copy(color = if (error != null) Paper.red else Paper.brandDeep),
+                style = Type.journalNote.copy(color = if (error != null) Paper.red else Paper.brandDeep),
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {

@@ -1,22 +1,14 @@
 package com.shunshou.app.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,7 +23,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.shunshou.app.data.AppUiState
 import com.shunshou.app.data.FocusSession
+import com.shunshou.app.ui.components.JournalPage
 import com.shunshou.app.ui.components.PageHeader
+import com.shunshou.app.ui.components.PaperNote
+import com.shunshou.app.ui.components.PaperPrimaryButton
+import com.shunshou.app.ui.components.PaperSecondaryButton
+import com.shunshou.app.ui.components.PaperTag
+import com.shunshou.app.ui.components.PaperTextField
+import com.shunshou.app.ui.components.SectionHeading
 import com.shunshou.app.ui.theme.Dimens
 import com.shunshou.app.ui.theme.Paper
 import com.shunshou.app.ui.theme.Type
@@ -49,64 +48,79 @@ fun FocusScreen(
     var task by remember { mutableStateOf("") }
     var minutes by remember { mutableStateOf(state.planner.focusMinutes.toString()) }
 
-    Column(Modifier.fillMaxSize().background(Paper.page)) {
-        PageHeader(title = "专注", action = { TextButton(onClick = onBack) { Text("返回", style = Type.caption) } })
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = Dimens.gutter, vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+    JournalPage {
+        PageHeader(
+            title = "专注",
+            action = { PaperSecondaryButton("返回", onBack) },
+        )
+        PaperNote(
+            modifier = Modifier.padding(horizontal = Dimens.gutter, vertical = 22.dp),
+            tapeColor = Paper.tapeGreen,
         ) {
             if (active == null) {
-                Text("开始一段专注", style = Type.sectionTitle)
-                Spacer(Modifier.height(20.dp))
-                OutlinedTextField(
+                SectionHeading("开始一段专注")
+                Spacer(Modifier.height(18.dp))
+                PaperTextField(
                     value = task,
                     onValueChange = { task = it },
-                    label = { Text("要做什么") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    label = "要做什么",
                 )
                 Spacer(Modifier.height(12.dp))
-                OutlinedTextField(
+                PaperTextField(
                     value = minutes,
                     onValueChange = { minutes = it },
-                    label = { Text("分钟（1–180）") },
-                    singleLine = true,
+                    label = "分钟（1–180）",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 )
-                Spacer(Modifier.height(20.dp))
-                Button(
+                Spacer(Modifier.height(22.dp))
+                PaperPrimaryButton(
+                    text = "开始",
                     onClick = { onStart(task.ifBlank { "专注" }, (minutes.toIntOrNull() ?: 25).coerceIn(1, 180)) },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Paper.brand),
-                ) { Text("开始", style = Type.body) }
-            } else {
-                Text(active.task, style = Type.sectionTitle, textAlign = TextAlign.Center)
-                Spacer(Modifier.height(20.dp))
-                Countdown(active)
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    if (active.status == "paused") "已暂停" else "进行中",
-                    style = Type.caption,
                 )
+            } else {
+                SectionHeading("正在专注")
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    active.task,
+                    style = Type.sectionTitle,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(14.dp))
+                Countdown(active)
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PaperTag(
+                        if (active.status == "paused") "已暂停" else "进行中",
+                        color = if (active.status == "paused") Paper.kraftWash else Paper.brandWash,
+                        contentColor = if (active.status == "paused") Paper.inkSoft else Paper.brandDeep,
+                    )
+                    Text(" · ${active.minutes} 分钟", style = Type.caption)
+                }
                 Spacer(Modifier.height(24.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (active.status == "running") {
-                        OutlinedButton(
+                        PaperSecondaryButton(
+                            text = "暂停",
                             onClick = { onControl("pause") },
-                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-                        ) { Text("暂停", style = Type.body) }
+                            modifier = Modifier.weight(1f),
+                        )
                     } else {
-                        Button(
+                        PaperPrimaryButton(
+                            text = "继续",
                             onClick = { onControl("resume") },
-                            modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Paper.brand),
-                        ) { Text("继续", style = Type.body) }
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-                    OutlinedButton(
+                    PaperSecondaryButton(
+                        text = "结束",
                         onClick = { onControl("cancel") },
-                        modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-                    ) { Text("结束", style = Type.body.copy(color = Paper.red)) }
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -115,21 +129,16 @@ fun FocusScreen(
 
 @Composable
 private fun Countdown(session: FocusSession) {
-    // 用 segments 与当前时间算剩余，不依赖定时器精度；tick 只为驱动重绘。
     var tick by remember(session.id) { mutableIntStateOf(0) }
-    // tick 参与读取（记得的 key + 效果的 key）：每秒 tick 变化 → 重组一次 → now 刷新，
-    // 倒计时才会真的走。原来的 while 版本只写 tick 不读，Compose 不会重组，永远停在首帧。
     val now = remember(tick) { System.currentTimeMillis() }
     LaunchedEffect(session.id, session.status, tick) {
         if (session.status != "running") return@LaunchedEffect
-        // 到点后不再自我驱动，避免 00:00 之后每秒空转。
         val total = session.minutes * 60_000L
         val done = session.segments.sumOf { maxOf(0L, (it.end ?: System.currentTimeMillis()) - it.start) }
         if (done >= total) return@LaunchedEffect
         delay(1_000)
         tick += 1
     }
-    // 每段用自己真实的 start：暂停→继续之间的间隙不算专注时长。
     val elapsedMillis = session.segments.sumOf { segment ->
         maxOf(0L, (segment.end ?: now) - segment.start)
     }.coerceAtMost(session.minutes * 60_000L)
@@ -139,5 +148,7 @@ private fun Countdown(session: FocusSession) {
         text,
         style = Type.figureLarge.copy(fontSize = Type.figureLarge.fontSize * 2.2f),
         color = Paper.brand,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
     )
 }

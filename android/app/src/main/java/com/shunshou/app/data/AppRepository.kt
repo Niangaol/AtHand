@@ -1,5 +1,6 @@
 package com.shunshou.app.data
 
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,15 +17,23 @@ data class AppUiState(
     val username: String = "",
     val ledger: LedgerState = LedgerState.EMPTY,
     val planner: PlannerSnapshot = PlannerSnapshot.EMPTY,
+    val calendar: CalendarState = CalendarState(),
     val ledgerUpdatedAt: String? = null,
     val loading: Boolean = false,
+    val calendarLoading: Boolean = false,
     val message: String? = null,
     val error: String? = null,
-)
+) {
+    fun allEvents(): List<PlannerEvent> =
+        (planner.events + calendar.sources.filter { it.calendarAvailable }.flatMap { it.events })
+            .distinctBy { it.id }
+            .sortedBy { it.start }
+}
 
 class AppRepository(
     private val api: ShunshouApi,
     private val store: SessionStore,
+    private val context: Context,
     private val scope: CoroutineScope,
 ) {
     private val _state = MutableStateFlow(restore())
@@ -43,11 +52,15 @@ class AppRepository(
         val planner = store.cached("planner")
             ?.let { runCatching { Models.parsePlanner(JSONObject(it)) }.getOrNull() }
             ?: PlannerSnapshot.EMPTY
+        val calendar = store.cached("calendar")
+            ?.let { runCatching { Models.parseCalendarState(JSONObject(it)) }.getOrNull() }
+            ?: CalendarState()
         return AppUiState(
             signedIn = store.isValid(),
             username = store.load()?.username.orEmpty(),
             ledger = ledger,
             planner = planner,
+            calendar = calendar,
             ledgerUpdatedAt = store.cached("ledgerUpdatedAt"),
         )
     }
@@ -65,17 +78,44 @@ class AppRepository(
             try {
                 val (ledger, updatedAt) = api.fetchLedger(token)
                 val planner = api.fetchPlanner(token)
+                val calendarSources = api.fetchCalendar(token)
+                val calendar = CalendarState(
+                    sources = calendarSources,
+                    status = _state.value.calendar.status,
+                    lastSuccess = _state.value.calendar.lastSuccess,
+                )
                 store.cache("ledger", JSONObject().put("ledger", Models.ledgerJson(ledger)).toString())
                 store.cache("ledgerUpdatedAt", updatedAt.orEmpty())
                 store.cache("planner", Models.plannerJson(planner).toString())
+                store.cache("calendar", Models.calendarStateJson(calendar).toString())
                 _state.value = _state.value.copy(
-                    ledger = ledger, planner = planner, ledgerUpdatedAt = updatedAt,
+                    ledger = ledger, planner = planner, calendar = calendar, ledgerUpdatedAt = updatedAt,
                     loading = false, error = null,
                 )
             } catch (error: ApiException) {
                 if (error.status == 401) expireSession()
                 else _state.value = _state.value.copy(loading = false, error = ApiErrors.message(error))
             }
+        }
+    }
+
+    fun syncCalendar() {
+        val session = store.load()?.takeIf { store.isValid() }
+        if (session == null) {
+            _state.value = _state.value.copy(error = "登录已失效，请重新登录。")
+            return
+        }
+        if (_state.value.calendarLoading) return
+        _state.value = _state.value.copy(calendarLoading = true, error = null)
+        scope.launch(Dispatchers.IO) {
+            val result = CloudCalendarSync.sync(context, store, ShunshouApi(session.baseUrl), force = true)
+            if (result.unauthorized) expireSession()
+            _state.value = _state.value.copy(
+                calendar = result.state ?: _state.value.calendar,
+                calendarLoading = false,
+                message = if (result.success) result.message else null,
+                error = if (result.success) null else result.message,
+            )
         }
     }
 

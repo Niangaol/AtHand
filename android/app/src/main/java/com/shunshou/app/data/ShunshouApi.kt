@@ -126,6 +126,12 @@ class ShunshouApi(val baseUrl: String = SessionStore.DEFAULT_BASE) {
         return Models.parsePlanner(body)
     }
 
+    fun fetchCalendar(token: String): List<CalendarSnapshot> =
+        Models.parseCalendar(request("GET", "/api/calendar", token))
+
+    fun uploadCalendarSnapshot(token: String, payload: JSONObject): CalendarSnapshot =
+        Models.parseCalendarSnapshot(request("PUT", "/api/calendar/snapshot", token, payload))
+
     fun pushSamples(token: String, samples: JSONArray): Int =
         request("POST", "/api/samples", token, JSONObject().put("samples", samples))
             .optInt("added", 0)
