@@ -7,6 +7,8 @@ var __export = (target, all) => {
 
 // src/domain/records.ts
 var expenseCategories = ["\u5403\u996D", "\u4EA4\u901A", "\u65E5\u7528", "\u5A31\u4E50", "\u5B66\u4E60", "\u5176\u4ED6", "\u65E5\u7528\u54C1", "\u9910\u996E", "\u96F6\u98DF", "\u6C34\u679C", "\u533B\u7597", "\u914D\u9970", "\u65C5\u884C", "\u8863\u670D", "\u996E\u6599"];
+var MAX_PHOTOS = 4;
+var MAX_PHOTO_CHARS = 4e5;
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -20516,10 +20518,19 @@ function buildWorkplace(name, rate, id) {
 function buildRecord(draft, workplaces, id) {
   if (!isDateKey(draft.date)) throw new Error("\u8BF7\u586B\u5199 2000 \u81F3 2100 \u5E74\u4E4B\u95F4\u7684\u6709\u6548\u65E5\u671F\u3002");
   if (draft.title.trim().length > 100) throw new Error("\u5907\u6CE8\u4E0D\u80FD\u8D85\u8FC7 100 \u4E2A\u5B57\u7B26\u3002");
-  const base = { id, date: draft.date, source: "manual" };
+  const photos = draft.photos?.length ? draft.photos : void 0;
+  if (photos) {
+    if (photos.length > MAX_PHOTOS) throw new Error(`\u5355\u6761\u8BB0\u5F55\u6700\u591A\u6DFB\u52A0 ${MAX_PHOTOS} \u5F20\u7167\u7247\u3002`);
+    if (!photos.every((photo) => photo.startsWith("data:image/") && photo.length <= MAX_PHOTO_CHARS)) throw new Error("\u7167\u7247\u4F53\u79EF\u8D85\u51FA\u4E0A\u9650\uFF0C\u8BF7\u6362\u4E00\u5F20\u6216\u88C1\u526A\u540E\u91CD\u8BD5\u3002");
+  }
+  const base = { id, date: draft.date, source: "manual", ...photos ? { photos } : {} };
   if (draft.type === "expense") {
-    if (!expenseCategories.includes(draft.category)) throw new Error("\u8BF7\u9009\u62E9\u652F\u51FA\u5206\u7C7B\u3002");
-    return { ...base, type: "expense", title: draft.title.trim() || draft.category, category: draft.category, amountCents: parseAmount(draft.amount) };
+    const requested = draft.category.trim();
+    if (!requested) throw new Error("\u8BF7\u9009\u62E9\u652F\u51FA\u5206\u7C7B\u3002");
+    const known = expenseCategories.includes(requested);
+    const category = known ? requested : "\u5176\u4ED6";
+    const title2 = [draft.title.trim(), known ? "" : requested].filter(Boolean).join(" \xB7 ").slice(0, 100) || category;
+    return { ...base, type: "expense", title: title2, category, amountCents: parseAmount(draft.amount) };
   }
   const workplace = workplaces.find((item) => item.id === draft.workplaceId);
   if (!workplace) throw new Error("\u8BF7\u5148\u9009\u62E9\u6216\u6DFB\u52A0\u517C\u804C\u5355\u4F4D\u3002");
@@ -20561,6 +20572,7 @@ function isLedgerState(value) {
   const records = value.records;
   if (!records.every((record2) => {
     if (!isObject2(record2) || !text2(record2.id, 100) || !text2(record2.title, 100) || typeof record2.date !== "string" || !isDateKey(record2.date) || !Number.isSafeInteger(record2.amountCents) || Number(record2.amountCents) < 0 || !["demo", "manual", "school", "import"].includes(String(record2.source))) return false;
+    if (record2.photos !== void 0 && (!Array.isArray(record2.photos) || record2.photos.length > MAX_PHOTOS || !record2.photos.every((photo) => typeof photo === "string" && photo.startsWith("data:image/") && photo.length <= MAX_PHOTO_CHARS))) return false;
     if (record2.type === "expense") return Number(record2.amountCents) > 0 && Number(record2.amountCents) <= 999999999 && expenseCategories.includes(record2.category);
     if (record2.type !== "work") return false;
     return units.some((unit) => unit.id === record2.workplaceId) && positiveInteger(record2.hourlyRateCents) && record2.hourlyRateCents <= 999999999 && positiveInteger(record2.durationMinutes) && record2.durationMinutes <= 1440 && record2.amountCents === Math.round(record2.durationMinutes * record2.hourlyRateCents / 60) && [record2.startTime, record2.endTime].every((time4) => typeof time4 === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time4));
