@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, BriefcaseBusiness, Coffee, NotebookPen, Pencil, ShoppingBag, TrainFront, Trash2, Utensils, Wallet } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { RecordEntry } from '../domain/records';
 import { shortDate } from '../domain/dates';
 import { money } from '../domain/summary';
@@ -8,7 +9,7 @@ import { canShowTimeCost } from '../domain/ledger';
 import { useRecords } from '../data/RecordsProvider';
 import { ConfirmDialog } from './ConfirmDialog';
 
-const expenseIcons = { 吃饭: Utensils, 交通: TrainFront, 日用: ShoppingBag, 娱乐: Coffee, 学习: BookOpen, 其他: Wallet };
+const expenseIcons: Record<string, LucideIcon> = { 吃饭: Utensils, 交通: TrainFront, 日用: ShoppingBag, 娱乐: Coffee, 学习: BookOpen, 其他: Wallet, 日用品: ShoppingBag, 餐饮: Utensils, 零食: Coffee, 水果: Utensils, 医疗: Wallet, 配饰: ShoppingBag, 旅行: TrainFront, 衣服: ShoppingBag, 饮料: Coffee };
 
 export function RecordList({ records, editable = false }: { records: readonly RecordEntry[]; editable?: boolean }) {
   const { records: allRecords, settings, today, deleteRecord, blocked } = useRecords();
@@ -25,10 +26,10 @@ export function RecordList({ records, editable = false }: { records: readonly Re
   return <div className="record-list">
     {notice ? <p role="status" className="form-hint">{notice}</p> : null}
     {[...grouped].map(([date, entries]) => <section className="record-day" key={date}><h3>{shortDate(date)}<span>{entries.length} 笔</span></h3>{entries.map((record) => {
-      const Icon = record.type === 'work' ? BriefcaseBusiness : expenseIcons[record.category];
+      const Icon = record.type === 'work' ? BriefcaseBusiness : (expenseIcons[record.category] ?? Wallet);
       return <div className="record-row" key={record.id}>
         <span className={`record-icon ${record.type}`}><Icon size={19} strokeWidth={1.65} /></span>
-        <div className="record-description"><strong>{record.title}</strong><span>{record.type === 'work' ? `${record.startTime}–${record.endTime <= record.startTime ? '次日 ' : ''}${record.endTime} · ${(record.durationMinutes / 60).toFixed(1)} 小时` : record.category}</span>{record.type === 'expense' && showTimeCost ? <span>约 {(record.amountCents / settings.hourlyRateCents).toFixed(1)} 小时 · 基准时薪估算</span> : null}</div>
+        <div className="record-description"><strong>{record.title}</strong><span>{record.type === 'work' ? `${record.startTime}–${record.endTime <= record.startTime ? '次日 ' : ''}${record.endTime} · ${(record.durationMinutes / 60).toFixed(1)} 小时` : record.category}</span>{record.type === 'expense' && showTimeCost ? <span>约 {(record.amountCents / settings.hourlyRateCents).toFixed(1)} 小时 · 基准时薪估算</span> : null}{record.photos?.length ? <span>含 {record.photos.length} 张照片</span> : null}</div>
         <strong className={`record-amount ${record.type === 'work' ? 'income' : ''}`}>{record.type === 'work' ? '+' : '−'} {money(record.amountCents)}<small>元</small></strong>
         {editable ? <div className="record-actions"><Link className="icon-button" to={`/entry/${encodeURIComponent(record.id)}`} aria-label={`编辑 ${record.title}`}><Pencil size={15} /></Link><button className="icon-button danger-text" disabled={blocked} onClick={() => setDeleting(record)} aria-label={`删除 ${record.title}`}><Trash2 size={15} /></button></div> : null}
       </div>;

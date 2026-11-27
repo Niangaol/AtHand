@@ -1,11 +1,11 @@
 import { toDateKey } from './dates.ts';
-import { expenseCategories } from './records.ts';
 import type { ExpenseCategory, RecordEntry, Workplace } from './records.ts';
 
 export type RecordDraft = {
   type: 'work' | 'expense'; date: string; title: string; workplaceId: string;
   startTime: string; endTime: string; nextDay: boolean; duration: string;
   hourlyRate: string; amount: string; category: ExpenseCategory;
+  photos?: string[];
 };
 
 export function isDateKey(value: string): boolean {
@@ -30,10 +30,10 @@ export function buildWorkplace(name: string, rate: string, id: string): Workplac
 export function buildRecord(draft: RecordDraft, workplaces: readonly Workplace[], id: string): RecordEntry {
   if (!isDateKey(draft.date)) throw new Error('请填写 2000 至 2100 年之间的有效日期。');
   if (draft.title.trim().length > 100) throw new Error('备注不能超过 100 个字符。');
-  const base = { id, date: draft.date, source: 'manual' as const };
+  const base = { id, date: draft.date, source: 'manual' as const, ...(draft.photos?.length ? { photos: draft.photos } : {}) };
   if (draft.type === 'expense') {
-    if (!expenseCategories.includes(draft.category)) throw new Error('请选择支出分类。');
-    return { ...base, type: 'expense', title: draft.title.trim() || draft.category, category: draft.category, amountCents: parseAmount(draft.amount) };
+    if (!draft.category.trim() || draft.category.trim().length > 20) throw new Error('请选择支出分类。');
+    return { ...base, type: 'expense', title: draft.title.trim() || draft.category.trim(), category: draft.category.trim(), amountCents: parseAmount(draft.amount) };
   }
   const workplace = workplaces.find((item) => item.id === draft.workplaceId);
   if (!workplace) throw new Error('请先选择或添加兼职单位。');

@@ -1,5 +1,6 @@
-export const expenseCategories = ['吃饭', '交通', '日用', '娱乐', '学习', '其他'] as const;
-export type ExpenseCategory = typeof expenseCategories[number];
+export const expenseCategories = ['吃饭', '交通', '日用', '娱乐', '学习', '其他', '日用品', '餐饮', '零食', '水果', '医疗', '配饰', '旅行', '衣服', '饮料'] as const;
+/** 内置分类 + 用户自建分类（周账单的分类面板可添加自定义名称）。 */
+export type ExpenseCategory = string;
 
 type BaseRecord = {
   id: string;
@@ -7,6 +8,7 @@ type BaseRecord = {
   title: string;
   amountCents: number;
   source: 'demo' | 'manual' | 'school' | 'import';
+  photos?: string[];
 };
 
 export type WorkRecord = BaseRecord & {
