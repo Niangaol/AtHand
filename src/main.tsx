@@ -7,6 +7,8 @@ import './styles.css';
 import './styles/chart.css';
 import './styles/campus.css';
 import './styles/auth.css';
+// 小程序版设计层必须最后加载：它覆盖上面的令牌与基础件
+import './styles/wb.css';
 
 // 静态入口 login.html / register.html 直接落到对应页面，应用内跳转仍走 History。
 const entry = /\/register(\.html)?$/i.test(window.location.pathname)

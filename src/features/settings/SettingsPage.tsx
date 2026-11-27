@@ -353,7 +353,7 @@ export function SettingsPage() {
     ? `${remote.message || '已同步'}${remoteTime ? ` · ${remoteTime}` : ''}`
     : remote.message;
 
-  return <>
+  return <div className="settings-page">
     <PageHeading title="按自己的节奏来。" description="调整偏好，或者把这一段生活好好存一份。" />
     {notice ? <p className="inline-notice page-notice" role="status">{notice}</p> : null}
     <section className="panel settings-panel"><h2>记录偏好</h2>
@@ -538,5 +538,5 @@ export function SettingsPage() {
     <div className="version-note"><Sprout size={22} /><strong>顺手</strong><span>校园个人助手</span><span>v0.6 AI 工作台与全功能工具</span></div>
     {agentToRevoke ? <ConfirmDialog title="吊销这个 Agent 令牌？" description={`「${agentToRevoke.name}」将立即失去访问权限；它已经写过的日程、专注和倒计时不会删除。`} confirmLabel="确认吊销" onCancel={() => setAgentToRevoke(null)} onConfirm={async () => { const target = agentToRevoke; setAgentToRevoke(null); await revokeAgent(target); }} /> : null}
     {confirm ? <ConfirmDialog title={confirm === 'examples' ? '清空示例数据？' : '永久重置这份账本？'} description={confirm === 'examples' ? '只删除示例记录和未使用的示例单位，不影响你的真实记录。' : '此浏览器的全部记录、单位和时薪设置都会被清空。请先确认备份已下载；此操作不能撤销。'} confirmLabel={confirm === 'examples' ? '确认清空示例' : '确认重置全部数据'} onCancel={() => setConfirm(null)} onConfirm={async () => { const result = await (confirm === 'examples' ? clearExamples() : resetLedger()); if (result.ok && confirm === 'reset') setRate('20.00'); setNotice(result.ok ? (confirm === 'examples' ? '示例数据已清空。' : '账本已重置，可以重新开始记录。') : result.message); setConfirm(null); }} /> : null}
-  </>;
+  </div>;
 }

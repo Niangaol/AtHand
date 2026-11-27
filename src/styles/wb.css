@@ -1,0 +1,487 @@
+/* ==========================================================================
+   顺手 · 小程序版设计层（以 wangbichun/AtHand 的周账单视觉为唯一基准）
+   浅绿 #295c48 / 白卡 16px 圆角 / 无衬线 / 胶囊控件 / 去装饰性假手机壳。
+   本文件必须在 styles.css 之后加载：只覆盖令牌与基础件，不改结构。
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* 底与面 */
+  --page: #f6f9f5;
+  --paper-deep: #eef4ec;
+  --sheet: #ffffff;
+  --card: #f1f6f0;
+  --rule: #e6ebe4;
+  --rule-strong: #d8e2db;
+
+  /* 墨与绿 */
+  --ink: #24382d;
+  --ink-soft: #3c4d42;
+  --muted: #8a9c90;
+  --brand: #295c48;
+  --brand-deep: #1f4a3a;
+  --brand-wash: #eaf1e9;
+
+  /* 支出 / 收入 / 提示 */
+  --red: #d9503f;
+  --red-deep: #c04534;
+  --red-wash: #fdeeeb;
+  --income: #2f8f63;
+  --orange: #e8a15f;
+  --note: #fbfdfb;
+  --warn: #b4762c;
+  --steel: #4b6067;
+  --on-brand: #ffffff;
+  --on-red: #ffffff;
+
+  /* 字：小程序版全部无衬线，不再有宋体大标 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: var(--font-ui);
+  --font-figure: var(--font-ui);
+  --font-latin: var(--font-ui);
+
+  /* 形：小程序式圆角与柔和投影 */
+  --r-sm: 9px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-note: 16px;
+  --shadow-card: 0 4px 16px rgba(30, 60, 110, .05);
+  --shadow-raise: 0 12px 34px rgba(24, 44, 80, .12);
+  --note-shadow: none;
+}
+
+body { background: var(--page); color: var(--ink); font-family: var(--font-ui); }
+
+/* ---------- 外壳：桌面真布局 ---------- */
+
+.app-shell { display: flex; min-height: 100vh; background: var(--page); }
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 20;
+  width: 236px;
+  padding: 22px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--sheet);
+  border-right: 1px solid var(--rule);
+}
+
+.brand { display: flex; align-items: center; gap: 11px; margin: 0 6px 20px; }
+.brand-mark {
+  width: 38px; height: 38px; flex-shrink: 0; display: grid; place-items: center;
+  border-radius: 13px; background: var(--brand); color: #fff; box-shadow: none;
+}
+.brand > span:last-child { display: flex; flex-direction: column; font-family: var(--font-ui); font-size: 19px; font-weight: 700; line-height: 1.2; letter-spacing: 0; }
+.brand small { margin-top: 3px; font-size: 10.5px; font-weight: 400; color: var(--muted); }
+
+.assistant-entry {
+  margin: 0 0 16px; padding: 11px 12px; gap: 10px;
+  border: 1px solid var(--rule); border-radius: 14px; background: var(--brand-wash);
+  transition: background-color 120ms linear;
+}
+.assistant-entry:hover { background: #e2ede2; }
+.assistant-entry.active { border-color: var(--brand); background: var(--brand-wash); }
+.assistant-entry-mark { width: 30px; height: 30px; border-radius: 10px; background: #fff; color: var(--brand); }
+.assistant-entry-copy strong { font-size: 13px; font-weight: 650; }
+.assistant-entry-copy small { font-size: 10.5px; color: var(--muted); }
+.assistant-entry > svg { color: var(--muted); }
+
+.nav-caption { margin: 0 10px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .06em; color: var(--muted); }
+.nav-group { gap: 2px; margin-top: 14px; }
+.nav-item {
+  min-height: 38px; gap: 10px; padding: 8px 11px; border-radius: 11px;
+  color: var(--ink-soft); font-size: 13.5px;
+  transition: background-color 120ms linear, color 120ms linear;
+}
+.nav-item:hover { background: var(--brand-wash); color: var(--brand); }
+.nav-item.active { background: var(--brand-wash); color: var(--brand); font-weight: 650; border-radius: 11px; }
+.nav-item.active::before { display: none; }
+.nav-item svg { color: currentColor; }
+
+.sidebar-note { margin: 0 0 12px; padding: 14px; border: 1px solid var(--rule); border-radius: 14px; background: var(--brand-wash); }
+.sidebar-note p { margin: 8px 0 10px; font-size: 13px; line-height: 1.8; color: var(--brand); }
+.sidebar-note a { border-bottom: 0; color: var(--brand); font-size: 11.5px; }
+.profile { padding: 12px 6px 0; border-top: 1px solid var(--rule); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--brand-wash); color: var(--brand); font-weight: 650; }
+.profile-dot { background: var(--income); }
+
+.workspace { margin-left: 236px; width: calc(100% - 236px); min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  height: 60px; padding: 0 28px; gap: 14px;
+  background: rgba(255, 255, 255, .86);
+  backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--rule);
+  color: var(--muted);
+}
+.topbar strong { color: var(--ink); font-weight: 650; }
+.command-trigger { width: 250px; min-height: 36px; border: 1px solid var(--rule); border-radius: 999px; background: var(--page); }
+.command-trigger:hover { background: var(--brand-wash); }
+.command-trigger kbd { border: 0; border-radius: 6px; background: #fff; }
+.demo-badge { padding: 4px 10px; border-radius: 999px; background: var(--brand-wash); color: var(--brand); font-weight: 600; font-size: 11px; }
+.demo-badge > span { background: var(--income); }
+
+.main-content { max-width: 1180px; padding: 28px 28px 72px; }
+.app-footer { margin: 0 28px; border-top: 1px solid var(--rule); padding: 14px 0 20px; }
+
+/* ---------- 基础件 ---------- */
+
+.page-heading { align-items: center; margin-bottom: 20px; padding-bottom: 0; border-bottom: 0; }
+.page-heading h1 { font-family: var(--font-ui); font-size: clamp(21px, 1.7vw, 26px); font-weight: 700; letter-spacing: -.01em; }
+.page-heading p { margin-top: 6px; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+
+.panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-lg); box-shadow: var(--shadow-card); }
+.planner-panel, .chart-panel, .recent-panel, .ledger-panel, .settings-panel, .campus-panel {
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card); padding: 18px 20px;
+}
+.section-heading h2, .section-heading h3 { font-family: var(--font-ui); font-weight: 650; }
+
+.button {
+  min-height: 38px; padding: 8px 18px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; border: 1px solid transparent;
+  transition: background-color 120ms linear, box-shadow 120ms linear;
+}
+.button.primary { background: var(--brand); color: var(--on-brand); box-shadow: 0 6px 16px rgba(41, 92, 72, .18); }
+.button.primary:not(:disabled):hover { background: var(--brand-deep); }
+.button.secondary { background: var(--sheet); border-color: var(--rule); color: var(--ink); }
+.button.secondary:not(:disabled):hover { background: var(--brand-wash); border-color: var(--brand-wash); color: var(--brand); }
+.button.compact { min-height: 32px; padding: 5px 13px; font-size: 12px; }
+.button.danger { background: var(--red); color: var(--on-red); }
+.text-link { color: var(--brand); font-weight: 600; }
+
+input, select, textarea { border-radius: 11px; }
+.field input, .field select, .planner-form input, .planner-form select, .rate-form input { border-radius: 11px; }
+
+.dashboard-grid { grid-template-columns: 1.05fr 1fr; gap: 16px; }
+.planner-home { gap: 16px; }
+
+.subtle-tag, .planner-tag { border-radius: 999px; background: var(--brand-wash); color: var(--brand); }
+
+/* ---------- 响应式：先窄屏 tab，再中等图标栏 ---------- */
+
+@media (max-width: 1180px) {
+  .main-content { padding: 22px 20px 84px; }
+  .topbar { padding: 0 20px; }
+  .dashboard-grid, .planner-home { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .sidebar { width: 84px; padding: 18px 8px 12px; align-items: center; }
+  .brand { margin: 0 0 16px; justify-content: center; }
+  .brand > span:last-child, .assistant-entry-copy, .assistant-entry > svg, .nav-caption, .sidebar-note, .profile span:not(.avatar) { display: none; }
+  .assistant-entry { justify-content: center; padding: 10px; }
+  .nav-item { justify-content: center; padding: 10px; }
+  .nav-item span { display: none; }
+  .profile { justify-content: center; }
+  .workspace { margin-left: 84px; width: calc(100% - 84px); }
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    inset: auto 0 0 0; z-index: 40; width: 100%; display: block; overflow: visible; padding: 0;
+    border-right: 0; border-top: 1px solid var(--rule); background: var(--sheet);
+    box-shadow: 0 -8px 24px rgba(20, 45, 30, .06);
+  }
+  .brand, .assistant-entry, .nav-caption, .sidebar-bottom { display: none; }
+  .nav-group { display: contents; }
+  .main-nav { flex-direction: row; justify-content: space-around; overflow: visible; padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  .nav-item { flex-direction: column; gap: 3px; min-height: 52px; border-radius: 12px; font-size: 10.5px; }
+  .nav-item span { display: block; }
+  .nav-item:not(.mobile-primary) { display: none; }
+  .nav-item.mobile-primary { display: flex; }
+  .nav-item.active { background: var(--brand-wash); }
+  .workspace { margin-left: 0; width: 100%; }
+  .topbar { height: 52px; padding: 0 14px; }
+  .topbar > span:first-child { font-size: 11.5px; }
+  .command-trigger { width: auto; padding: 6px 10px; }
+  .command-trigger .command-copy, .command-trigger kbd { display: none; }
+  .main-content { padding: 16px 14px 96px; }
+  .page-heading h1 { font-size: 20px; }
+  .panel, .planner-panel, .chart-panel, .recent-panel, .ledger-panel, .settings-panel, .campus-panel { border-radius: 14px; padding: 14px 15px; }
+  .app-footer { display: none; }
+}
+
+/* ---------- 手机预览模式：真实外壳套进 430px 机身，无假状态栏 ---------- */
+
+body[data-preview='phone'] { background: linear-gradient(135deg, #eef4ec 0%, #f5f7f4 46%, #e9f1e8 100%); }
+body[data-preview='phone']::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(520px 520px at 8% 0%, rgba(64, 124, 88, .16), transparent 70%),
+              radial-gradient(460px 460px at 96% 100%, rgba(126, 168, 124, .16), transparent 70%);
+}
+body[data-preview='phone'] .app-shell { justify-content: center; align-items: center; min-height: 100vh; }
+body[data-preview='phone'] .sidebar { display: none; }
+body[data-preview='phone'] .workspace {
+  width: 430px; max-width: calc(100vw - 40px); margin: 24px auto; height: calc(100vh - 48px);
+  min-height: 0; overflow-y: auto; border-radius: 30px; background: var(--page);
+  box-shadow: 0 30px 80px rgba(30, 70, 45, .18), 0 0 0 1px rgba(30, 70, 45, .06);
+  position: relative; z-index: 1; scrollbar-width: none;
+}
+body[data-preview='phone'] .workspace::-webkit-scrollbar { display: none; }
+body[data-preview='phone'] .topbar { border-radius: 30px 30px 0 0; height: 52px; padding: 0 14px; }
+body[data-preview='phone'] .main-content { padding: 16px 14px 28px; max-width: none; }
+body[data-preview='phone'] .app-footer { display: none; }
+body[data-preview='phone'] .main-nav { flex-direction: row; }
+body[data-preview='phone'] .nav-item:not(.mobile-primary) { display: none; }
+body[data-preview='phone'] .nav-item { flex-direction: column; min-height: 52px; font-size: 10.5px; }
+body[data-preview='phone'] .sidebar {
+  display: block; position: sticky; inset: auto; bottom: 0; width: 100%; height: auto;
+  padding: 0; border: 0; border-top: 1px solid var(--rule); border-radius: 0 0 30px 30px;
+  order: 2; background: var(--sheet); align-items: stretch;
+}
+body[data-preview='phone'] .app-shell { flex-direction: column; }
+body[data-preview='phone'] .brand, body[data-preview='phone'] .assistant-entry,
+body[data-preview='phone'] .nav-caption, body[data-preview='phone'] .sidebar-bottom { display: none; }
+body[data-preview='phone'] .main-nav { padding: 6px 4px 8px; flex-wrap: nowrap; }
+body[data-preview='phone'] .nav-item { flex: 1; }
+body[data-preview='phone'] .nav-item span { display: block; }
+
+/* 预览开关本体 */
+.preview-toggle {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet);
+  color: var(--ink-soft); font-size: 11.5px; font-weight: 600; cursor: pointer;
+  transition: background-color 120ms linear, color 120ms linear, border-color 120ms linear;
+}
+.preview-toggle:hover { background: var(--brand-wash); color: var(--brand); }
+.preview-toggle[aria-pressed='true'] { background: var(--brand); border-color: var(--brand); color: #fff; }
+@media (max-width: 900px) { .preview-toggle { display: none; } }
+
+/* ---------- 修正：预览模式里的顶栏与底部导航 ---------- */
+
+body[data-preview='phone'] .topbar { justify-content: space-between; }
+body[data-preview='phone'] .topbar .command-trigger,
+body[data-preview='phone'] .topbar .preview-toggle,
+body[data-preview='phone'] .topbar .demo-badge { display: none; }
+body[data-preview='phone'] .topbar > span:first-child { font-size: 12px; }
+body[data-preview='phone'] .nav-group { display: contents; }
+
+/* ---------- 首页：小程序式的紧凑头部，不要落地页大标 ---------- */
+
+.home-head { padding-top: 0; }
+.home-date { font-size: 11.5px; color: var(--muted); }
+.home-head h1 {
+  margin: 8px 0 6px;
+  font-family: var(--font-ui);
+  font-size: clamp(21px, 1.8vw, 26px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+.home-glance { gap: 8px; margin: 14px 0 0; padding: 0; border-top: 0; }
+.home-glance > div {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 7px 12px; border-radius: 999px; background: var(--sheet);
+  border: 1px solid var(--rule); box-shadow: var(--shadow-card);
+}
+.home-glance dt { font-size: 11px; color: var(--muted); }
+.home-glance dd { font-family: var(--font-ui); font-size: 12.5px; font-weight: 650; }
+
+/* 首页四宫格入口：去掉硬分隔线，改成卡片 */
+.home-foot { margin-top: 18px; }
+.home-foot-sync { font-size: 11.5px; }
+
+/* 简报与提问块统一成卡片观感 */
+.home-brief { border-radius: var(--r-lg); border: 1px solid var(--rule); background: var(--sheet); box-shadow: var(--shadow-card); }
+.home-ask { border-radius: var(--r-lg); border: 1px solid var(--rule); background: var(--sheet); box-shadow: var(--shadow-card); }
+.home-feed { border-radius: var(--r-lg); border: 1px solid var(--rule); background: var(--sheet); box-shadow: var(--shadow-card); }
+
+/* 预览机身只有 430px：把媒体查询按视口算不到的两栏布局强制压回单栏 */
+body[data-preview='phone'] .wb-ledger .wb-scroll {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "hd" "main" "side";
+}
+body[data-preview='phone'] .main-content { max-width: none; }
+body[data-preview='phone'] .topbar { font-size: 11.5px; }
+body[data-preview='phone'] .sidebar { box-shadow: none; }
+body[data-preview='phone'] .nav-item { font-size: 10.5px; }
+
+/* 预览模式下底部 tab 贴住机身底边，而不是铺满整个视口 */
+body[data-preview='phone'] .app-shell { align-items: center; }
+body[data-preview='phone'] .sidebar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px;
+  width: 430px; max-width: calc(100vw - 40px); z-index: 2;
+  border-radius: 0 0 30px 30px; border-top: 1px solid var(--rule);
+}
+body[data-preview='phone'] .main-content { padding-bottom: 84px; }
+
+/* ---------- 第二轮：首页密度 ---------- */
+
+.home-lede { margin: 6px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--muted); }
+.home-brief, .home-ask, .home-intents, .home-feed { margin-top: 14px; }
+
+/* 四宫格入口：硬分隔线表格 → 圆角卡片 */
+.home-intents {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+  border: 0; padding: 0;
+}
+.home-intent {
+  flex-direction: row; align-items: center; gap: 11px;
+  min-height: 76px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 16px;
+  background: var(--sheet); box-shadow: var(--shadow-card);
+}
+.home-intent:hover { background: var(--brand-wash); border-color: var(--brand-wash); }
+.home-intent:first-child { border-left: 1px solid var(--rule); }
+.home-intent-icon {
+  width: 36px; height: 36px; border-radius: 12px; flex-shrink: 0;
+  background: var(--brand-wash); color: var(--brand);
+}
+.home-intent.is-ai .home-intent-icon { background: var(--brand); color: #fff; }
+.home-intent-copy strong { font-size: 13px; font-weight: 650; }
+.home-intent-copy span { font-size: 11px; color: var(--muted); }
+
+/* 「说一句」入口：一行放得下，示例文案不换行 */
+.home-ask { align-items: center; gap: 12px; padding: 13px 16px; }
+.home-ask-copy strong { font-size: 13.5px; }
+.home-ask-copy small { font-size: 11.5px; color: var(--muted); }
+.home-ask-example {
+  margin-left: auto; max-width: 40%; font-size: 11.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+  .home-intents { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .home-ask-example { display: none; }
+}
+
+/* ---------- 第二轮：设置页分组卡片 ---------- */
+
+.settings-page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.settings-page > .page-heading,
+.settings-page > .inline-notice,
+.settings-page > .privacy-note,
+.settings-page > .version-note { grid-column: 1 / -1; }
+.settings-page .settings-panel { padding: 16px 18px 6px; }
+.settings-page .settings-panel > h2 { font-size: 14px; padding-bottom: 10px; }
+.settings-page .setting-row { padding: 14px 0; gap: 12px; }
+.settings-page .setting-row > svg {
+  width: 34px; height: 34px; padding: 7px; border-radius: 11px;
+  background: var(--brand-wash); color: var(--brand); flex-shrink: 0;
+}
+.settings-page .setting-row h3 { font-size: 13px; }
+.settings-page .setting-row p { margin-top: 4px; font-size: 11.5px; line-height: 1.75; }
+.settings-page .rate-form { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; }
+.settings-page .rate-form input { min-width: 130px; }
+
+@media (max-width: 1180px) { .settings-page { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- 第二轮：日程页 ---------- */
+
+.planner-toolbar { margin-bottom: 12px; }
+.planner-panel + .planner-panel, .planner-spaced { margin-top: 14px; }
+.schedule-item { border-radius: 12px; }
+.schedule-week { gap: 12px; }
+
+/* ---------- 第二轮：账本右栏不再留洞 ---------- */
+
+.wb-ledger .wb-col-side { position: sticky; top: 76px; align-self: start; }
+@media (max-width: 1000px) { .wb-ledger .wb-col-side { position: static; } }
+
+/* 首页段落间距：原 28–44px 的 flex gap 太散，压到 16px；
+   home-brief.css 在打包后晚于本文件，用两级选择器压过它的 margin/border */
+.home-stage { gap: 16px; padding-bottom: 8px; }
+.home-stage .home-brief {
+  margin-top: 0; border: 1px solid var(--rule); border-left: 1px solid var(--rule);
+  border-radius: 16px; box-shadow: var(--shadow-card); padding: 15px 17px;
+}
+.home-stage .home-ask, .home-stage .home-intents, .home-stage .home-feed { margin-top: 0; }
+.home-stage .home-brief-copy { font-size: 13px; line-height: 1.7; }
+
+/* ---------- 第三轮：清掉纸墨遗留装饰 ---------- */
+
+body .review-panel {
+  border-left: 1px solid var(--rule); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card); padding: 18px 20px;
+}
+body .home-ask { border-left-width: 1px; }
+body .review-panel .review-focus-bar { border-radius: 6px; }
+
+/* ---------- 第三轮：AI 工作台改为卡片式，标题降到常规尺度 ---------- */
+
+.assistant-head { border-bottom: 0; padding-bottom: 6px; align-items: flex-start; }
+.assistant-head-copy h1 {
+  margin: 6px 0; font-family: var(--font-ui);
+  font-size: clamp(22px, 1.9vw, 28px); font-weight: 700; line-height: 1.35;
+}
+.assistant-head-copy p { font-size: 12.5px; line-height: 1.75; }
+.assistant-stage { gap: 14px; min-height: 0; }
+.assistant-start {
+  padding: 18px 20px; border: 1px solid var(--rule); border-radius: var(--r-lg);
+  background: var(--sheet); box-shadow: var(--shadow-card);
+}
+.assistant-start-copy h2 { margin: 6px 0 6px; font-size: 18px; font-weight: 700; }
+.assistant-start-copy p { font-size: 12.5px; line-height: 1.8; }
+.assistant-quick, .assistant-intents { gap: 10px; }
+.assistant-thread { border-radius: var(--r-lg); }
+
+/* ---------- 第三轮：登录 / 注册页换掉纸墨抬头与红色印章 ---------- */
+
+.auth-brand { font-family: var(--font-ui); font-size: 19px; font-weight: 700; }
+.auth-brand-mark {
+  border-radius: 13px; background: var(--brand); color: #fff; box-shadow: none;
+}
+.auth-eyebrow { font-size: 10.5px; letter-spacing: .14em; color: var(--muted); text-transform: none; }
+.auth-story-copy { max-width: 34ch; }
+.auth-story-copy h1 {
+  margin-top: 14px; font-family: var(--font-ui);
+  font-size: clamp(23px, 2.1vw, 30px); font-weight: 700; line-height: 1.38;
+}
+.auth-story-lead { margin-top: 14px; font-size: 12.5px; line-height: 1.85; }
+.auth-points { margin-top: 22px; gap: 9px; }
+.auth-points li { font-size: 12px; }
+body .auth-card {
+  width: min(440px, 100%); padding: 26px 24px;
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 20px;
+  box-shadow: var(--shadow-card);
+}
+
+/* AI 工作台：「先连接电脑」实际是 .assistant-setup，补卡片观感 */
+.assistant-setup {
+  margin-top: 6px; padding: 18px 20px;
+  border: 1px solid var(--rule); border-radius: var(--r-lg);
+  background: var(--sheet); box-shadow: var(--shadow-card);
+}
+.assistant-setup-mark { color: var(--brand); }
+.assistant-rail { border-left: 1px solid var(--rule); padding-left: 18px; }
+@media (max-width: 1180px) { .assistant-rail { border-left: 0; padding-left: 0; } }
+
+/* ---------- 第四轮：空态面板（.planner-empty）左右内边距为 0，文字贴边 ---------- */
+
+body .panel.planner-empty { padding: 16px 20px; border-bottom: 0; color: var(--ink-soft); }
+body .panel.planner-empty h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+body .panel.planner-empty p { margin: 0; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+body .panel.planner-empty .text-link { margin-top: 10px; display: inline-block; }
+
+/* 旅记：地图卡片与卡片内边距 */
+.city-map { border-radius: var(--r-lg); border-color: var(--rule); }
+.trip-day h2 { font-size: 15px; font-weight: 650; }
+
+/* 校园 / 服务：继承卡片后补齐内边距与圆角 */
+body .campus-panel, body .service-card, body .service-grid > * { border-radius: var(--r-lg); }
+
+/* ---------- 第五轮：矮视口下侧栏导航被压断 / 404 面板过大 / 旅记地图外溢 ---------- */
+
+@media (max-height: 900px) and (min-width: 901px) {
+  .sidebar { padding-top: 14px; }
+  .brand { margin-bottom: 12px; }
+  .assistant-entry { margin-bottom: 10px; padding: 9px 10px; }
+  .nav-group { margin-top: 8px; }
+  .nav-item { min-height: 34px; padding: 6px 10px; }
+  .sidebar-note { display: none; }
+  .main-nav { padding-bottom: 8px; }
+}
+
+body .planned-page {
+  max-width: 560px; margin: 48px auto; padding: 34px 28px; text-align: center;
+  border-radius: var(--r-lg); box-shadow: var(--shadow-card);
+}
+body .planned-page h1 { font-size: 21px; font-weight: 700; }
+body .planned-page p { margin: 8px 0 18px; font-size: 13px; color: var(--muted); }
+
+body .city-map { max-width: 100%; border-radius: 14px; }
+body .panel > .city-map, body .planner-panel > .city-map { margin-bottom: 4px; }

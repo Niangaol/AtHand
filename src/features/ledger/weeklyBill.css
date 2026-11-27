@@ -1,25 +1,25 @@
 /* 顺手 · 周账单小程序：整屏沉浸式，直接盖住桌面外壳（全部 wb- 前缀，不影响其他路由） */
-.wb-mini-app { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: center; align-items: stretch; background: linear-gradient(135deg, #eef4ec 0%, #f5f7f4 46%, #e9f1e8 100%); }
+/* 原「整屏盖住外壳」的定位已移除：改用页面内正常流布局（桌面两栏 / 窄屏单栏）。 */
 .wb-mini-backdrop { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .wb-mini-backdrop::before { content: ""; position: absolute; width: 520px; height: 520px; border-radius: 50%; left: -180px; top: -140px; background: radial-gradient(circle, rgba(64,124,88,.16), transparent 70%); }
 .wb-mini-backdrop::after { content: ""; position: absolute; width: 460px; height: 460px; border-radius: 50%; right: -160px; bottom: -150px; background: radial-gradient(circle, rgba(126,168,124,.16), transparent 70%); }
 .wb-bg-word { position: absolute; left: 7%; top: 40%; font-size: 96px; font-weight: 800; letter-spacing: 14px; color: #295c48; opacity: .07; }
 .wb-bg-sub { position: absolute; left: 7%; top: calc(40% + 116px); font-size: 15px; letter-spacing: 3px; color: #295c48; opacity: .12; }
-.wb-phone {
+.wb-app {
   /* 与软件本体一致的浅绿淡色主题：--green #295c48 / --green-soft #eaf1e9 / #f5f7f4 */
   --wb-blue: #3d7c5e; --wb-blue-soft: #eaf1e9; --wb-orange: #e8a15f;
   --wb-orange-soft: #fbf1e4; --wb-teal: #e05a3c; --wb-red: #d96b5c;
   --wb-ink: #24382d; --wb-text: #3c4d42; --wb-muted: #8a9c90; --wb-line: #e6ebe4; --wb-card: #f1f6f0;
   --wb-income: #2f8f63; --wb-expense: #d9503f;
-  width: 430px; max-width: 100%; height: 100dvh; background: #f6f9f5; position: relative; overflow: hidden;
-  box-shadow: 0 0 60px rgba(30,70,45,.16), 0 0 0 1px rgba(30,70,45,.06);
+  width: 100%; max-width: none; height: auto; background: transparent; position: relative; overflow: visible;
+  box-shadow: none;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: var(--wb-ink);
 }
 /* :where() 让重置保持零优先级，后面各组件的背景/边框/内边距才不会被覆盖 */
-.wb-phone :where(button) { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; font: inherit; }
-.wb-phone :where(input) { font: inherit; }
-.wb-phone svg { flex-shrink: 0; }
+.wb-app :where(button) { border: 0; background: none; padding: 0; color: inherit; cursor: pointer; font: inherit; }
+.wb-app :where(input) { font: inherit; }
+.wb-app svg { flex-shrink: 0; }
 
 /* 微信小程序风格状态栏：时间 / 信号 / Wi-Fi / 电量，实时读数 */
 .wb-statusbar { height: 44px; padding: 0 20px 0 22px; display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 60; background: #f7f9fc; cursor: pointer; border-bottom: 1px solid rgba(230,236,244,.7); }
@@ -46,7 +46,7 @@
 .wb-menu-mask { position: absolute; inset: 0; z-index: 72; }
 .wb-menu { position: absolute; top: 90px; right: 16px; width: 174px; background: #fff; border-radius: 14px; padding: 6px; z-index: 75; box-shadow: 0 12px 34px rgba(24,44,80,.18); border: 1px solid #edf0f5; display: none; flex-direction: column; }
 .wb-menu.show { display: flex; }
-.wb-menu a, .wb-phone .wb-menu button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12.5px; color: var(--wb-text); text-decoration: none; border-radius: 9px; text-align: left; }
+.wb-menu a, .wb-app .wb-menu button { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12.5px; color: var(--wb-text); text-decoration: none; border-radius: 9px; text-align: left; }
 .wb-menu a:hover, .wb-menu button:hover { background: #f4f7fb; }
 .wb-menu::before { content: ""; position: absolute; top: -6px; right: 30px; width: 11px; height: 11px; background: #fff; border-left: 1px solid #edf0f5; border-top: 1px solid #edf0f5; transform: rotate(45deg); }
 
@@ -55,7 +55,7 @@
 .wb-greet-ico { width: 34px; height: 34px; border-radius: 12px; background: linear-gradient(135deg, #eaf3ff, #dbe9ff); color: var(--wb-blue); display: grid; place-items: center; flex: 0 0 auto; }
 .wb-greet b { display: block; font-size: 13.5px; font-weight: 650; }
 .wb-greet small { display: block; font-size: 10.5px; color: var(--wb-muted); margin-top: 2px; }
-.wb-phone .wb-live { width: 100%; display: block; text-align: left; background: #fff; border: 1px solid #eef1f6; border-radius: 16px; padding: 9px 13px 10px; box-shadow: 0 4px 16px rgba(30,60,110,.05); margin-bottom: 10px; }
+.wb-app .wb-live { width: 100%; display: block; text-align: left; background: #fff; border: 1px solid #eef1f6; border-radius: 16px; padding: 9px 13px 10px; box-shadow: 0 4px 16px rgba(30,60,110,.05); margin-bottom: 10px; }
 .wb-live-hd { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; color: #6b7482; }
 .wb-live-hd em { margin-left: auto; font-style: normal; font-weight: 500; color: var(--wb-blue); font-size: 10.5px; }
 .wb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #35c08b; box-shadow: 0 0 0 3px rgba(53,192,139,.15); }
@@ -71,7 +71,7 @@
 .wb-device-hd { display: flex; align-items: center; gap: 9px; padding: 4px 0 2px; }
 .wb-device-hd b { font-size: 17px; }
 .wb-device-hd span { font-size: 10.5px; color: var(--wb-muted); }
-.wb-phone .wb-device-hd button { margin-left: auto; width: 27px; height: 27px; border-radius: 50%; background: #f3f5f9; color: #7a8492; font-size: 19px; line-height: 24px; }
+.wb-app .wb-device-hd button { margin-left: auto; width: 27px; height: 27px; border-radius: 50%; background: #f3f5f9; color: #7a8492; font-size: 19px; line-height: 24px; }
 .wb-device-tip { font-size: 11px; color: #8b94a3; line-height: 1.65; margin: 7px 0 12px; }
 .wb-device-list { border: 1px solid #eef1f6; border-radius: 14px; overflow: hidden; }
 .wb-device-row { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-bottom: 1px solid #f3f5f8; font-size: 12px; }
@@ -79,7 +79,7 @@
 .wb-device-row i { width: 20px; color: var(--wb-blue); font-style: normal; display: grid; place-items: center; }
 .wb-device-row span { color: #8b94a3; }
 .wb-device-row b { margin-left: auto; font-weight: 600; text-align: right; color: var(--wb-ink); font-variant-numeric: tabular-nums; }
-.wb-phone .wb-device-refresh { width: 100%; margin-top: 14px; background: var(--wb-blue); color: #fff; border-radius: 13px; padding: 12px 0; font-size: 14px; font-weight: 650; }
+.wb-app .wb-device-refresh { width: 100%; margin-top: 14px; background: var(--wb-blue); color: #fff; border-radius: 13px; padding: 12px 0; font-size: 14px; font-weight: 650; }
 .wb-back-bar { max-width: 960px; margin: 0 auto 18px; display: flex; align-items: center; gap: 12px; background: #eaf3ff; border-radius: 12px; padding: 12px 16px; font-size: 13px; color: #295c8a; }
 
 /* 图 1：周账单主界面 */
@@ -280,9 +280,8 @@
 .wb-legacy > div { padding: 0 18px 18px; }
 @media (max-width: 700px) {
   .wb-bg-word, .wb-bg-sub { display: none; }
-  .wb-phone { width: 100%; height: 100dvh; box-shadow: none; }
-  .wb-statusbar { padding: 0 16px; }
-  .wb-scroll { padding-left: 14px; padding-right: 14px; }
+  .wb-app { width: 100%; }
+  .wb-scroll { padding-left: 0; padding-right: 0; }
 }
 @media (min-width: 701px) {
   .wb-bg-word { left: 6%; }
@@ -290,205 +289,252 @@
 
 /* ============================================================
    统一为软件本体的浅绿淡色主题（#295c48 / #eaf1e9 / #f5f7f4）
-   用 .wb-mini-app .wb-phone 前缀提高优先级，盖住早期蓝/橙硬编码
+   用 .wb-app .wb-app 前缀提高优先级，盖住早期蓝/橙硬编码
    ============================================================ */
-.wb-mini-app .wb-phone { background: #f6f9f5; }
-.wb-mini-app .wb-statusbar { background: #fbfdfb; border-bottom: 1px solid #e9efe8; }
-.wb-mini-app .wb-screen { background: #f6f9f5; }
-.wb-mini-app .wb-phone .wb-ledger { background: #ffffff; }
-.wb-mini-app .wb-capsule { border-color: #dfe8dc; background: rgba(255,255,255,.92); box-shadow: 0 2px 8px rgba(35,80,50,.07); color: #3c4d42; }
-.wb-mini-app .wb-capsule button:active { background: #eaf1e9; }
-.wb-mini-app .wb-capsule-div { background: #dfe8dc; }
-.wb-mini-app .wb-menu { border-color: #e2ebe0; box-shadow: 0 12px 34px rgba(30,70,45,.16); }
-.wb-mini-app .wb-menu a, .wb-mini-app .wb-phone .wb-menu button { color: #3c4d42; }
-.wb-mini-app .wb-menu a:hover, .wb-mini-app .wb-menu button:hover { background: #eef4ec; }
-.wb-mini-app .wb-menu::before { border-left-color: #e2ebe0; border-top-color: #e2ebe0; }
-.wb-mini-app .wb-greet-ico { background: linear-gradient(135deg, #eaf1e9, #dcebd8); color: #3d7c5e; }
-.wb-mini-app .wb-phone .wb-live { background: #fff; border-color: #e6ebe4; box-shadow: 0 4px 16px rgba(35,80,50,.05); }
-.wb-mini-app .wb-live-hd { color: #65746a; }
-.wb-mini-app .wb-live-hd em { color: #3d7c5e; }
-.wb-mini-app .wb-live-grid > div { border-right-color: #edf2eb; }
-.wb-mini-app .wb-phone .wb-device-hd button { background: #eef4ec; color: #65746a; }
-.wb-mini-app .wb-device-row { border-bottom-color: #eef2ec; }
-.wb-mini-app .wb-device-list { border-color: #e6ebe4; }
-.wb-mini-app .wb-back-bar { background: #eaf1e9; color: #295c48; }
+.wb-app .wb-app { background: #f6f9f5; }
+.wb-app .wb-statusbar { background: #fbfdfb; border-bottom: 1px solid #e9efe8; }
+.wb-app .wb-screen { background: #f6f9f5; }
+.wb-app .wb-app .wb-ledger { background: #ffffff; }
+.wb-app .wb-capsule { border-color: #dfe8dc; background: rgba(255,255,255,.92); box-shadow: 0 2px 8px rgba(35,80,50,.07); color: #3c4d42; }
+.wb-app .wb-capsule button:active { background: #eaf1e9; }
+.wb-app .wb-capsule-div { background: #dfe8dc; }
+.wb-app .wb-menu { border-color: #e2ebe0; box-shadow: 0 12px 34px rgba(30,70,45,.16); }
+.wb-app .wb-menu a, .wb-app .wb-app .wb-menu button { color: #3c4d42; }
+.wb-app .wb-menu a:hover, .wb-app .wb-menu button:hover { background: #eef4ec; }
+.wb-app .wb-menu::before { border-left-color: #e2ebe0; border-top-color: #e2ebe0; }
+.wb-app .wb-greet-ico { background: linear-gradient(135deg, #eaf1e9, #dcebd8); color: #3d7c5e; }
+.wb-app .wb-app .wb-live { background: #fff; border-color: #e6ebe4; box-shadow: 0 4px 16px rgba(35,80,50,.05); }
+.wb-app .wb-live-hd { color: #65746a; }
+.wb-app .wb-live-hd em { color: #3d7c5e; }
+.wb-app .wb-live-grid > div { border-right-color: #edf2eb; }
+.wb-app .wb-app .wb-device-hd button { background: #eef4ec; color: #65746a; }
+.wb-app .wb-device-row { border-bottom-color: #eef2ec; }
+.wb-app .wb-device-list { border-color: #e6ebe4; }
+.wb-app .wb-back-bar { background: #eaf1e9; color: #295c48; }
 
-.wb-mini-app .wb-today { border-color: #d6e3d3; color: #5c7563; }
-.wb-mini-app .wb-month button { color: #7c9080; }
-.wb-mini-app .wb-hd-actions { color: #5c7563; }
-.wb-mini-app .wb-summary { background: linear-gradient(120deg, #eaf1e9, #f2f8f0); border-color: #dcead8; box-shadow: 0 5px 18px rgba(45,95,60,.07); }
-.wb-mini-app .wb-sum-item span { color: #71897a; }
-.wb-mini-app .wb-sum-item b.green { color: var(--wb-income); }
-.wb-mini-app .wb-eye { color: #7e9a85; }
-.wb-mini-app .wb-week { color: #7e9083; }
-.wb-mini-app .wb-week .wk { color: #c07a6d; }
-.wb-mini-app .wb-cell.sel { background: #e3efe0; border-color: #7fb18a; }
-.wb-mini-app .wb-cell.sel .wb-num { color: #2f6f4c; }
-.wb-mini-app .wb-cell.sel .wb-sub { color: #7fa487; }
-.wb-mini-app .wb-cell.wk .wb-num { color: #c07a6d; }
-.wb-mini-app .wb-cell .wb-sub.term { color: #c07a6d !important; }
-.wb-mini-app .wb-quick-card { background: #fff; border-color: #e6ebe4; box-shadow: 0 4px 14px rgba(35,80,50,.05); }
-.wb-mini-app .wb-qc-ico { background: #e5f0e2; color: #3d7c5e; }
-.wb-mini-app .wb-qc-ico.orange { background: #e9f2e5; color: #4a8a62; }
-.wb-mini-app .wb-quick-card.primary { background: #3d7c5e; color: #fff; }
-.wb-mini-app .wb-quick-card.primary .wb-qc-ico { background: rgba(255,255,255,.2); color: #fff; }
-.wb-mini-app .wb-records { border-color: #e6ebe4; box-shadow: 0 3px 14px rgba(35,80,50,.035); }
-.wb-mini-app .wb-rec-head button { background: #eaf1e9; color: #3d7c5e; }
-.wb-mini-app .wb-ri-ico { background: #eaf1e9; color: #3d7c5e; }
-.wb-mini-app .wb-ri-ico.orange { background: #fbece8; color: #d9503f; }
-.wb-mini-app .wb-ri-amt { color: var(--wb-income); }
-.wb-mini-app .wb-ri-amt.out { color: var(--wb-expense); }
-.wb-mini-app .wb-tabbar { border-top-color: #e6ebe4; background: #fff; box-shadow: 0 -4px 18px rgba(35,80,50,.045); }
-.wb-mini-app .wb-tab.active { color: #3d7c5e; }
-.wb-mini-app .wb-home-bar { background: #c9d8c6; }
+.wb-app .wb-today { border-color: #d6e3d3; color: #5c7563; }
+.wb-app .wb-month button { color: #7c9080; }
+.wb-app .wb-hd-actions { color: #5c7563; }
+.wb-app .wb-summary { background: linear-gradient(120deg, #eaf1e9, #f2f8f0); border-color: #dcead8; box-shadow: 0 5px 18px rgba(45,95,60,.07); }
+.wb-app .wb-sum-item span { color: #71897a; }
+.wb-app .wb-sum-item b.green { color: var(--wb-income); }
+.wb-app .wb-eye { color: #7e9a85; }
+.wb-app .wb-week { color: #7e9083; }
+.wb-app .wb-week .wk { color: #c07a6d; }
+.wb-app .wb-cell.sel { background: #e3efe0; border-color: #7fb18a; }
+.wb-app .wb-cell.sel .wb-num { color: #2f6f4c; }
+.wb-app .wb-cell.sel .wb-sub { color: #7fa487; }
+.wb-app .wb-cell.wk .wb-num { color: #c07a6d; }
+.wb-app .wb-cell .wb-sub.term { color: #c07a6d !important; }
+.wb-app .wb-quick-card { background: #fff; border-color: #e6ebe4; box-shadow: 0 4px 14px rgba(35,80,50,.05); }
+.wb-app .wb-qc-ico { background: #e5f0e2; color: #3d7c5e; }
+.wb-app .wb-qc-ico.orange { background: #e9f2e5; color: #4a8a62; }
+.wb-app .wb-quick-card.primary { background: #3d7c5e; color: #fff; }
+.wb-app .wb-quick-card.primary .wb-qc-ico { background: rgba(255,255,255,.2); color: #fff; }
+.wb-app .wb-records { border-color: #e6ebe4; box-shadow: 0 3px 14px rgba(35,80,50,.035); }
+.wb-app .wb-rec-head button { background: #eaf1e9; color: #3d7c5e; }
+.wb-app .wb-ri-ico { background: #eaf1e9; color: #3d7c5e; }
+.wb-app .wb-ri-ico.orange { background: #fbece8; color: #d9503f; }
+.wb-app .wb-ri-amt { color: var(--wb-income); }
+.wb-app .wb-ri-amt.out { color: var(--wb-expense); }
+.wb-app .wb-tabbar { border-top-color: #e6ebe4; background: #fff; box-shadow: 0 -4px 18px rgba(35,80,50,.045); }
+.wb-app .wb-tab.active { color: #3d7c5e; }
+.wb-app .wb-home-bar { background: #c9d8c6; }
 
-.wb-mini-app .wb-mask { background: rgba(24,48,32,.4); }
-.wb-mini-app .wb-sheet { box-shadow: 0 -10px 40px rgba(25,60,35,.1); }
-.wb-mini-app .wb-handle { background: #d8e3d5; }
-.wb-mini-app .wb-toast { background: rgba(30,60,40,.9); }
-.wb-mini-app .wb-switch { background: #d9e5d7; }
-.wb-mini-app .wb-switch i { background: #93a994; }
-.wb-mini-app .wb-switch.on { background: #3d7c5e; }
-.wb-mini-app .wb-seg { background: #edf3ea; }
-.wb-mini-app .wb-seg button.on { color: #3d7c5e; box-shadow: 0 1px 6px rgba(35,80,50,.09); }
-.wb-mini-app .wb-time-box { background: var(--wb-card); }
-.wb-mini-app .wb-duration input { background: #fff; }
-.wb-mini-app .wb-calc { background: #eaf1e9; }
-.wb-mini-app .wb-calc-main .blue { color: #2f6f4c; }
-.wb-mini-app .wb-calc-main .green { color: var(--wb-income); }
-.wb-mini-app .wb-calc-main .edit { color: #7fa487; }
-.wb-mini-app .wb-remark { background: var(--wb-card); }
-.wb-mini-app .wb-settle .circle { border-color: #c4d6c1; }
-.wb-mini-app .wb-settle.on .circle { border-color: #3d7c5e; background: #3d7c5e; }
-.wb-mini-app .wb-photo-add { border-color: #cadfc7; background: #f4f9f2; color: #7e9a85; }
-.wb-mini-app .wb-btn-primary { background: #3d7c5e; box-shadow: 0 6px 16px rgba(61,124,94,.22); }
-.wb-mini-app .wb-phone .wb-device-refresh { background: #3d7c5e; }
-.wb-mini-app .wb-device-row i { color: #3d7c5e; }
-.wb-mini-app .wb-live-dot { background: #4ea873; box-shadow: 0 0 0 3px rgba(78,168,115,.15); }
+.wb-app .wb-mask { background: rgba(24,48,32,.4); }
+.wb-app .wb-sheet { box-shadow: 0 -10px 40px rgba(25,60,35,.1); }
+.wb-app .wb-handle { background: #d8e3d5; }
+.wb-app .wb-toast { background: rgba(30,60,40,.9); }
+.wb-app .wb-switch { background: #d9e5d7; }
+.wb-app .wb-switch i { background: #93a994; }
+.wb-app .wb-switch.on { background: #3d7c5e; }
+.wb-app .wb-seg { background: #edf3ea; }
+.wb-app .wb-seg button.on { color: #3d7c5e; box-shadow: 0 1px 6px rgba(35,80,50,.09); }
+.wb-app .wb-time-box { background: var(--wb-card); }
+.wb-app .wb-duration input { background: #fff; }
+.wb-app .wb-calc { background: #eaf1e9; }
+.wb-app .wb-calc-main .blue { color: #2f6f4c; }
+.wb-app .wb-calc-main .green { color: var(--wb-income); }
+.wb-app .wb-calc-main .edit { color: #7fa487; }
+.wb-app .wb-remark { background: var(--wb-card); }
+.wb-app .wb-settle .circle { border-color: #c4d6c1; }
+.wb-app .wb-settle.on .circle { border-color: #3d7c5e; background: #3d7c5e; }
+.wb-app .wb-photo-add { border-color: #cadfc7; background: #f4f9f2; color: #7e9a85; }
+.wb-app .wb-btn-primary { background: #3d7c5e; box-shadow: 0 6px 16px rgba(61,124,94,.22); }
+.wb-app .wb-app .wb-device-refresh { background: #3d7c5e; }
+.wb-app .wb-device-row i { color: #3d7c5e; }
+.wb-app .wb-live-dot { background: #4ea873; box-shadow: 0 0 0 3px rgba(78,168,115,.15); }
 
 /* 记一笔 / 分类面板：底色与描边统一浅绿，橙红金额按新设计稿保留 */
-.wb-mini-app .wb-ledger-hd .back, .wb-mini-app .wb-ledger-hd b { color: #24382d; }
-.wb-mini-app .wb-tabs { border-bottom-color: #eef2ec; }
-.wb-mini-app .wb-tabs button.on { color: #24382d; }
-.wb-mini-app .wb-amount { color: var(--wb-teal); }
-.wb-mini-app .wb-amount::placeholder { color: var(--wb-teal); }
-.wb-mini-app .wb-amount-line { background: #e8a15f; opacity: .7; }
-.wb-mini-app .wb-field { border-bottom: 1px solid #f2f5f0; }
-.wb-mini-app .wb-field .f-ico, .wb-mini-app .wb-field .f-label { color: #94a69a; }
-.wb-mini-app .wb-cat-sheet { background: #fff; }
-.wb-mini-app .wb-cat-tools { border-bottom-color: #eef2ec; color: #5c7563; }
-.wb-mini-app .wb-cat-tools .divider { background: #e2ebe0; }
-.wb-mini-app .wb-cat-item.sel { background: #f2f8ef; border-color: #9dc6a3; }
-.wb-mini-app .wb-cat-add { background: #f0f5ee; color: #6d8874; }
-.wb-mini-app .wb-cat-search input { background: #f0f5ee; }
-.wb-mini-app .wb-cat-new input { border-color: #dfe8dc; }
-.wb-mini-app .wb-lb.ghost { background: #f7f3ec; color: #c68b4f; }
-.wb-mini-app .wb-lb.solid { background: #e8a15f; box-shadow: 0 6px 16px rgba(232,161,95,.28); }
+.wb-app .wb-ledger-hd .back, .wb-app .wb-ledger-hd b { color: #24382d; }
+.wb-app .wb-tabs { border-bottom-color: #eef2ec; }
+.wb-app .wb-tabs button.on { color: #24382d; }
+.wb-app .wb-amount { color: var(--wb-teal); }
+.wb-app .wb-amount::placeholder { color: var(--wb-teal); }
+.wb-app .wb-amount-line { background: #e8a15f; opacity: .7; }
+.wb-app .wb-field { border-bottom: 1px solid #f2f5f0; }
+.wb-app .wb-field .f-ico, .wb-app .wb-field .f-label { color: #94a69a; }
+.wb-app .wb-cat-sheet { background: #fff; }
+.wb-app .wb-cat-tools { border-bottom-color: #eef2ec; color: #5c7563; }
+.wb-app .wb-cat-tools .divider { background: #e2ebe0; }
+.wb-app .wb-cat-item.sel { background: #f2f8ef; border-color: #9dc6a3; }
+.wb-app .wb-cat-add { background: #f0f5ee; color: #6d8874; }
+.wb-app .wb-cat-search input { background: #f0f5ee; }
+.wb-app .wb-cat-new input { border-color: #dfe8dc; }
+.wb-app .wb-lb.ghost { background: #f7f3ec; color: #c68b4f; }
+.wb-app .wb-lb.solid { background: #e8a15f; box-shadow: 0 6px 16px rgba(232,161,95,.28); }
 
 /* ============================================================
    日历：当日收支净额（收入绿 ＋ / 支出红 −）+ 实时统计条
    ============================================================ */
-.wb-mini-app .wb-day-stat { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; background: #eef5eb; border: 1px solid #dcead8; border-radius: 12px; padding: 9px 11px; margin: 0 0 11px; font-size: 10.5px; }
-.wb-mini-app .wb-ds-date { font-weight: 700; color: #2f6f4c; margin-right: 2px; }
-.wb-mini-app .wb-ds-item { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.wb-mini-app .wb-ds-item.plus { color: var(--wb-income); }
-.wb-mini-app .wb-ds-item.minus { color: var(--wb-expense); }
-.wb-mini-app .wb-ds-item.net { margin-left: auto; font-weight: 700; }
-.wb-mini-app .wb-cal { row-gap: 0; }
-.wb-mini-app .wb-cell { height: 64px; gap: 1px; }
-.wb-mini-app .wb-num { font-size: 16px; }
-.wb-mini-app .wb-sub { font-size: 9.5px; color: #a3b3a5; }
-.wb-mini-app .wb-net { font-size: 10px; line-height: 1.2; font-weight: 700; font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-mini-app .wb-net.plus { color: var(--wb-income); }
-.wb-mini-app .wb-net.minus { color: var(--wb-expense); }
-.wb-mini-app .wb-cell.out .wb-net { opacity: .75; }
+.wb-app .wb-day-stat { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; background: #eef5eb; border: 1px solid #dcead8; border-radius: 12px; padding: 9px 11px; margin: 0 0 11px; font-size: 10.5px; }
+.wb-app .wb-ds-date { font-weight: 700; color: #2f6f4c; margin-right: 2px; }
+.wb-app .wb-ds-item { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wb-app .wb-ds-item.plus { color: var(--wb-income); }
+.wb-app .wb-ds-item.minus { color: var(--wb-expense); }
+.wb-app .wb-ds-item.net { margin-left: auto; font-weight: 700; }
+.wb-app .wb-cal { row-gap: 0; }
+.wb-app .wb-cell { height: 64px; gap: 1px; }
+.wb-app .wb-num { font-size: 16px; }
+.wb-app .wb-sub { font-size: 9.5px; color: #a3b3a5; }
+.wb-app .wb-net { font-size: 10px; line-height: 1.2; font-weight: 700; font-variant-numeric: tabular-nums; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-app .wb-net.plus { color: var(--wb-income); }
+.wb-app .wb-net.minus { color: var(--wb-expense); }
+.wb-app .wb-cell.out .wb-net { opacity: .75; }
 
 /* ============================================================
    记工时：设置时薪 / 中途休息 / 可编辑数字
    ============================================================ */
-.wb-mini-app .wb-rate-box { background: #eaf1e9; border: 1px solid #dcead8; border-radius: 14px; padding: 11px 12px; margin: 4px 0 10px; }
-.wb-mini-app .wb-rate-head { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #2f6f4c; }
-.wb-mini-app .wb-rate-head b { font-size: 13px; }
-.wb-mini-app .wb-rate-head span { margin-left: auto; font-size: 10px; color: #7e9a85; }
-.wb-mini-app .wb-rate-row { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
-.wb-mini-app .wb-rate-row input { flex: 1; min-width: 0; border: 1px solid #cfe0ca; background: #fff; border-radius: 10px; padding: 9px 11px; font-size: 18px; font-weight: 700; color: #24382d; outline: none; }
-.wb-mini-app .wb-rate-row input:focus { border-color: #7fb18a; }
-.wb-mini-app .wb-rate-unit { font-size: 15px; color: #2f6f4c; font-weight: 700; }
-.wb-mini-app .wb-rate-unit.tail { font-size: 10.5px; font-weight: 500; color: #7e9a85; white-space: nowrap; }
-.wb-mini-app .wb-rate-row button { display: flex; align-items: center; gap: 3px; background: #3d7c5e; color: #fff; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; font-weight: 650; white-space: nowrap; }
-.wb-mini-app .wb-rate-msg { font-size: 10.5px; color: #c34a3c; margin-top: 6px; }
-.wb-mini-app .wb-rate-msg.ok { color: var(--wb-income); }
-.wb-mini-app .wb-rest-row { display: flex; align-items: center; gap: 7px; background: #f1f6f0; border-radius: 12px; padding: 9px 11px; margin: 6px 0 2px; font-size: 12px; color: #3c4d42; }
-.wb-mini-app .wb-rest-row input { width: 66px; border: 1px solid #d5e4d1; background: #fff; border-radius: 9px; padding: 6px 8px; font-size: 14px; font-weight: 650; outline: none; }
-.wb-mini-app .wb-rest-row small { margin-left: auto; font-size: 9.5px; color: #7e9a85; white-space: nowrap; }
-.wb-mini-app .wb-edit-btn { width: 21px; height: 21px; border-radius: 7px; background: #d9e9d4; color: #2f6f4c; display: inline-grid; place-items: center; flex: 0 0 auto; }
-.wb-mini-app .wb-edit-btn:active { background: #bcd8b6; }
-.wb-mini-app .wb-edit-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; background: #fff; border: 1px solid #dcead8; border-radius: 11px; padding: 8px 9px; }
-.wb-mini-app .wb-edit-row b { font-size: 11px; color: #3c4d42; width: 100%; }
-.wb-mini-app .wb-edit-row input { flex: 1; min-width: 70px; border: 1px solid #d5e4d1; border-radius: 8px; padding: 7px 9px; font-size: 14px; outline: none; }
-.wb-mini-app .wb-edit-row button { background: #3d7c5e; color: #fff; border-radius: 8px; padding: 8px 13px; font-size: 12px; }
-.wb-mini-app .wb-edit-row button:last-child { background: #eef3ec; color: #65746a; padding: 8px 10px; }
-.wb-mini-app .wb-calc-main .blue { cursor: default; }
+.wb-app .wb-rate-box { background: #eaf1e9; border: 1px solid #dcead8; border-radius: 14px; padding: 11px 12px; margin: 4px 0 10px; }
+.wb-app .wb-rate-head { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #2f6f4c; }
+.wb-app .wb-rate-head b { font-size: 13px; }
+.wb-app .wb-rate-head span { margin-left: auto; font-size: 10px; color: #7e9a85; }
+.wb-app .wb-rate-row { display: flex; align-items: center; gap: 6px; margin-top: 9px; }
+.wb-app .wb-rate-row input { flex: 1; min-width: 0; border: 1px solid #cfe0ca; background: #fff; border-radius: 10px; padding: 9px 11px; font-size: 18px; font-weight: 700; color: #24382d; outline: none; }
+.wb-app .wb-rate-row input:focus { border-color: #7fb18a; }
+.wb-app .wb-rate-unit { font-size: 15px; color: #2f6f4c; font-weight: 700; }
+.wb-app .wb-rate-unit.tail { font-size: 10.5px; font-weight: 500; color: #7e9a85; white-space: nowrap; }
+.wb-app .wb-rate-row button { display: flex; align-items: center; gap: 3px; background: #3d7c5e; color: #fff; border-radius: 10px; padding: 10px 12px; font-size: 12.5px; font-weight: 650; white-space: nowrap; }
+.wb-app .wb-rate-msg { font-size: 10.5px; color: #c34a3c; margin-top: 6px; }
+.wb-app .wb-rate-msg.ok { color: var(--wb-income); }
+.wb-app .wb-rest-row { display: flex; align-items: center; gap: 7px; background: #f1f6f0; border-radius: 12px; padding: 9px 11px; margin: 6px 0 2px; font-size: 12px; color: #3c4d42; }
+.wb-app .wb-rest-row input { width: 66px; border: 1px solid #d5e4d1; background: #fff; border-radius: 9px; padding: 6px 8px; font-size: 14px; font-weight: 650; outline: none; }
+.wb-app .wb-rest-row small { margin-left: auto; font-size: 9.5px; color: #7e9a85; white-space: nowrap; }
+.wb-app .wb-edit-btn { width: 21px; height: 21px; border-radius: 7px; background: #d9e9d4; color: #2f6f4c; display: inline-grid; place-items: center; flex: 0 0 auto; }
+.wb-app .wb-edit-btn:active { background: #bcd8b6; }
+.wb-app .wb-edit-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; background: #fff; border: 1px solid #dcead8; border-radius: 11px; padding: 8px 9px; }
+.wb-app .wb-edit-row b { font-size: 11px; color: #3c4d42; width: 100%; }
+.wb-app .wb-edit-row input { flex: 1; min-width: 70px; border: 1px solid #d5e4d1; border-radius: 8px; padding: 7px 9px; font-size: 14px; outline: none; }
+.wb-app .wb-edit-row button { background: #3d7c5e; color: #fff; border-radius: 8px; padding: 8px 13px; font-size: 12px; }
+.wb-app .wb-edit-row button:last-child { background: #eef3ec; color: #65746a; padding: 8px 10px; }
+.wb-app .wb-calc-main .blue { cursor: default; }
 
 /* ============================================================
    记一笔：时间行 / 备注；分类面板：编辑态与独立添加弹层
    ============================================================ */
-.wb-mini-app .wb-note-ico { width: 17px; font-size: 16px; color: #94a69a; }
-.wb-mini-app .f-clear { color: #a9b8ab; margin-left: auto; display: grid; place-items: center; }
-.wb-mini-app .wb-field .f-arrow { color: #c3d0c1; }
-.wb-mini-app .wb-cat-cell { position: relative; }
-.wb-mini-app .wb-cat-item { width: 100%; }
-.wb-mini-app .wb-cat-mini { position: absolute; top: 0; right: 2px; width: 17px; height: 17px; border-radius: 50%; background: #d9503f; color: #fff; display: grid; place-items: center; z-index: 2; }
-.wb-mini-app .wb-cat-mini.pencil { top: auto; bottom: 16px; right: 2px; background: #3d7c5e; }
-.wb-mini-app .wb-cat-hint { font-size: 10.5px; color: #7e9a85; line-height: 1.6; margin: 10px 2px 0; }
-.wb-mini-app .wb-cat-dialog { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.wb-mini-app .wb-cat-dialog-mask { position: absolute; inset: 0; background: rgba(24,48,32,.32); }
-.wb-mini-app .wb-cat-dialog-box { position: relative; width: 100%; background: #fff; border-radius: 18px; padding: 18px 17px 15px; box-shadow: 0 12px 36px rgba(25,60,35,.2); display: flex; flex-direction: column; gap: 7px; }
-.wb-mini-app .wb-cat-dialog-box b { font-size: 15px; color: #24382d; }
-.wb-mini-app .wb-cat-dialog-box small { font-size: 10.5px; color: #8a9c90; }
-.wb-mini-app .wb-cat-dialog-box input { border: 1px solid #d5e4d1; border-radius: 11px; padding: 11px 12px; font-size: 14px; outline: none; margin-top: 4px; }
-.wb-mini-app .wb-cat-dialog-box input:focus { border-color: #7fb18a; }
-.wb-mini-app .wb-cat-error { font-size: 11px; color: #c34a3c; }
-.wb-mini-app .wb-cat-dialog-btns { display: flex; gap: 9px; margin-top: 8px; }
-.wb-mini-app .wb-cat-dialog-btns button { flex: 1; border-radius: 12px; padding: 11px 0; font-size: 13px; background: #eef3ec; color: #65746a; }
-.wb-mini-app .wb-cat-dialog-btns button:last-child { background: #3d7c5e; color: #fff; font-weight: 650; }
-.wb-mini-app .wb-calc-num { text-decoration: underline dotted #7fb18a; text-underline-offset: 3px; font-weight: 700; }
+.wb-app .wb-note-ico { width: 17px; font-size: 16px; color: #94a69a; }
+.wb-app .f-clear { color: #a9b8ab; margin-left: auto; display: grid; place-items: center; }
+.wb-app .wb-field .f-arrow { color: #c3d0c1; }
+.wb-app .wb-cat-cell { position: relative; }
+.wb-app .wb-cat-item { width: 100%; }
+.wb-app .wb-cat-mini { position: absolute; top: 0; right: 2px; width: 17px; height: 17px; border-radius: 50%; background: #d9503f; color: #fff; display: grid; place-items: center; z-index: 2; }
+.wb-app .wb-cat-mini.pencil { top: auto; bottom: 16px; right: 2px; background: #3d7c5e; }
+.wb-app .wb-cat-hint { font-size: 10.5px; color: #7e9a85; line-height: 1.6; margin: 10px 2px 0; }
+.wb-app .wb-cat-dialog { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.wb-app .wb-cat-dialog-mask { position: absolute; inset: 0; background: rgba(24,48,32,.32); }
+.wb-app .wb-cat-dialog-box { position: relative; width: 100%; background: #fff; border-radius: 18px; padding: 18px 17px 15px; box-shadow: 0 12px 36px rgba(25,60,35,.2); display: flex; flex-direction: column; gap: 7px; }
+.wb-app .wb-cat-dialog-box b { font-size: 15px; color: #24382d; }
+.wb-app .wb-cat-dialog-box small { font-size: 10.5px; color: #8a9c90; }
+.wb-app .wb-cat-dialog-box input { border: 1px solid #d5e4d1; border-radius: 11px; padding: 11px 12px; font-size: 14px; outline: none; margin-top: 4px; }
+.wb-app .wb-cat-dialog-box input:focus { border-color: #7fb18a; }
+.wb-app .wb-cat-error { font-size: 11px; color: #c34a3c; }
+.wb-app .wb-cat-dialog-btns { display: flex; gap: 9px; margin-top: 8px; }
+.wb-app .wb-cat-dialog-btns button { flex: 1; border-radius: 12px; padding: 11px 0; font-size: 13px; background: #eef3ec; color: #65746a; }
+.wb-app .wb-cat-dialog-btns button:last-child { background: #3d7c5e; color: #fff; font-weight: 650; }
+.wb-app .wb-calc-num { text-decoration: underline dotted #7fb18a; text-underline-offset: 3px; font-weight: 700; }
 /* 分类面板：按钮贴底、选中态与设计稿一致（米橙浅框） */
-.wb-mini-app .wb-cat-body { display: flex; flex-direction: column; }
-.wb-mini-app .wb-cat-add { margin-top: auto; margin-bottom: 6px; }
-.wb-mini-app .wb-cat-item.sel { background: #fdf4e9; border-color: #eecfa8; }
-.wb-mini-app .wb-cat-grid { align-self: flex-start; width: 100%; }
+.wb-app .wb-cat-body { display: flex; flex-direction: column; }
+.wb-app .wb-cat-add { margin-top: auto; margin-bottom: 6px; }
+.wb-app .wb-cat-item.sel { background: #fdf4e9; border-color: #eecfa8; }
+.wb-app .wb-cat-grid { align-self: flex-start; width: 100%; }
 /* 选中态挂在外层 .wb-cat-cell 上 */
-.wb-mini-app .wb-cat-cell.sel .wb-cat-item { background: #fdf4e9; border-color: #eecfa8; color: #7a5c34; font-weight: 650; }
+.wb-app .wb-cat-cell.sel .wb-cat-item { background: #fdf4e9; border-color: #eecfa8; color: #7a5c34; font-weight: 650; }
 
 /* ============================================================
    余额：主页实时显示 + 记一笔里的数字键盘（按新截图）
    ============================================================ */
-.wb-mini-app .wb-ds-balance { width: 100%; display: flex; align-items: baseline; gap: 7px; padding-top: 7px; margin-top: 1px; border-top: 1px dashed #dcead8; }
-.wb-mini-app .wb-ds-balance > span { font-size: 10.5px; color: #71897a; white-space: nowrap; }
-.wb-mini-app .wb-ds-balance b { font-size: 15px; font-weight: 700; color: #2f6f4c; font-variant-numeric: tabular-nums; }
-.wb-mini-app .wb-ds-balance b.minus { color: var(--wb-expense); }
-.wb-mini-app .wb-ds-balance small { margin-left: auto; font-size: 9.5px; color: #9aab9e; text-align: right; }
+.wb-app .wb-ds-balance { width: 100%; display: flex; align-items: baseline; gap: 7px; padding-top: 7px; margin-top: 1px; border-top: 1px dashed #dcead8; }
+.wb-app .wb-ds-balance > span { font-size: 10.5px; color: #71897a; white-space: nowrap; }
+.wb-app .wb-ds-balance b { font-size: 15px; font-weight: 700; color: #2f6f4c; font-variant-numeric: tabular-nums; }
+.wb-app .wb-ds-balance b.minus { color: var(--wb-expense); }
+.wb-app .wb-ds-balance small { margin-left: auto; font-size: 9.5px; color: #9aab9e; text-align: right; }
 
 /* 大号余额用深色；未设置时只有占位符，绝不预置示例数字 */
-.wb-mini-app .wb-amount.balance { width: 100%; color: #1e2733; font-size: 44px; font-weight: 400; letter-spacing: .5px; }
-.wb-mini-app .wb-amount.balance::placeholder { color: #c9d2c9; opacity: 1; }
-.wb-mini-app .wb-amount-line { background: #e8a15f; opacity: .85; }
+.wb-app .wb-amount.balance { width: 100%; color: #1e2733; font-size: 44px; font-weight: 400; letter-spacing: .5px; }
+.wb-app .wb-amount.balance::placeholder { color: #c9d2c9; opacity: 1; }
+.wb-app .wb-amount-line { background: #e8a15f; opacity: .85; }
 
-.wb-mini-app .wb-keypad { position: relative; flex: 0 0 auto; margin-top: auto; display: flex; align-items: flex-end; gap: 6px; padding: 20px 10px 15px; background: #fff; border-top: 1px solid #eef2ec; }
-.wb-mini-app .wb-kp-collapse { position: absolute; top: -30px; right: 10px; width: 62px; height: 30px; border-radius: 10px 10px 0 0; background: #fff; display: grid; place-items: center; color: #7e9a85; box-shadow: 0 -4px 12px rgba(35,80,50,.06); }
-.wb-mini-app .wb-kp-tabs { width: 44px; display: grid; grid-template-rows: repeat(3, 46px); gap: 5px; align-self: start; }
-.wb-mini-app .wb-kp-tabs button { border-radius: 9px; font-size: 12px; color: #8a9c90; background: #f4f8f2; }
-.wb-mini-app .wb-kp-tabs button.on { background: #eaf1e9; color: #2f6f4c; font-weight: 700; }
-.wb-mini-app .wb-kp-grid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 46px; gap: 5px; }
-.wb-mini-app .wb-kp-grid button { border-radius: 9px; background: #f7f9f6; display: grid; place-items: center; font-size: 21px; font-weight: 400; color: #24382d; }
-.wb-mini-app .wb-kp-grid button.sym { font-size: 20px; color: #5c7563; }
-.wb-mini-app .wb-kp-grid button:active { background: #e3efe0; }
-.wb-mini-app .wb-kp-grid > span { pointer-events: none; }
-.wb-mini-app .wb-kp-confirm { width: 58px; height: 97px; border-radius: 11px; background: #e8a15f; color: #fff; font-size: 15px; font-weight: 650; box-shadow: 0 6px 16px rgba(232,161,95,.28); }
-.wb-mini-app .wb-kp-confirm:active { background: #d9904d; }
+.wb-app .wb-keypad { position: relative; flex: 0 0 auto; margin-top: auto; display: flex; align-items: flex-end; gap: 6px; padding: 20px 10px 15px; background: #fff; border-top: 1px solid #eef2ec; }
+.wb-app .wb-kp-collapse { position: absolute; top: -30px; right: 10px; width: 62px; height: 30px; border-radius: 10px 10px 0 0; background: #fff; display: grid; place-items: center; color: #7e9a85; box-shadow: 0 -4px 12px rgba(35,80,50,.06); }
+.wb-app .wb-kp-tabs { width: 44px; display: grid; grid-template-rows: repeat(3, 46px); gap: 5px; align-self: start; }
+.wb-app .wb-kp-tabs button { border-radius: 9px; font-size: 12px; color: #8a9c90; background: #f4f8f2; }
+.wb-app .wb-kp-tabs button.on { background: #eaf1e9; color: #2f6f4c; font-weight: 700; }
+.wb-app .wb-kp-grid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 46px; gap: 5px; }
+.wb-app .wb-kp-grid button { border-radius: 9px; background: #f7f9f6; display: grid; place-items: center; font-size: 21px; font-weight: 400; color: #24382d; }
+.wb-app .wb-kp-grid button.sym { font-size: 20px; color: #5c7563; }
+.wb-app .wb-kp-grid button:active { background: #e3efe0; }
+.wb-app .wb-kp-grid > span { pointer-events: none; }
+.wb-app .wb-kp-confirm { width: 58px; height: 97px; border-radius: 11px; background: #e8a15f; color: #fff; font-size: 15px; font-weight: 650; box-shadow: 0 6px 16px rgba(232,161,95,.28); }
+.wb-app .wb-kp-confirm:active { background: #d9904d; }
 
 /* 余额页的三个 tab 平分，选中横线仍为橙色 */
-.wb-mini-app .wb-ledger .wb-tabs { border-bottom-color: #eef2ec; }
+.wb-app .wb-ledger .wb-tabs { border-bottom-color: #eef2ec; }
 /* 空态用文字提示，避免看起来像预置了一个数字 */
-.wb-mini-app .wb-amount.balance::placeholder { font-size: 22px; font-weight: 400; letter-spacing: 0; color: #c2cec1; }
+.wb-app .wb-amount.balance::placeholder { font-size: 22px; font-weight: 400; letter-spacing: 0; color: #c2cec1; }
+
+/* ============================================================
+   桌面化：去掉手机框与假状态栏，改成页面内的响应式两栏
+   ============================================================ */
+.wb-ledger { display: block; }
+.wb-ledger .wb-screen { position: static; inset: auto; display: block; background: transparent; }
+.wb-ledger .wb-scroll {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr);
+  grid-template-areas: "hd hd" "main side";
+  gap: 14px;
+  overflow: visible;
+  padding: 0;
+}
+.wb-ledger .wb-hd { grid-area: hd; }
+.wb-ledger .wb-col-main { grid-area: main; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wb-ledger .wb-col-side { grid-area: side; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.wb-ledger .wb-hd-menu {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: #fff; border: 1px solid #e6ebe4; color: #3c4d42;
+}
+.wb-ledger .wb-hd-menu:hover { background: var(--wb-blue-soft); color: var(--wb-blue); }
+/* 桌面端不再需要假手机 chrome */
+.wb-ledger .wb-statusbar, .wb-ledger .wb-home-bar, .wb-ledger .wb-tabbar,
+.wb-ledger .wb-capsule, .wb-ledger .wb-menu::before { display: none; }
+.wb-ledger .wb-menu { top: 58px; right: 8px; }
+/* 卡片化：小程序里的块统一白卡 + 圆角 */
+.wb-ledger .wb-greet, .wb-ledger .wb-live, .wb-ledger .wb-summary,
+.wb-ledger .wb-day-stat, .wb-ledger .wb-cal, .wb-ledger .wb-records,
+.wb-ledger .wb-quick-card {
+  border-radius: 16px;
+}
+.wb-ledger .wb-cal { background: #fff; border: 1px solid #e6ebe4; padding: 10px 8px; }
+.wb-ledger .wb-records { background: #fff; border: 1px solid #e6ebe4; padding: 12px 14px; }
+.wb-ledger .wb-summary { background: #eaf1e9; border: 1px solid #d8e6da; }
+.wb-ledger .wb-day-stat { background: #fff; border: 1px solid #e6ebe4; }
+
+@media (max-width: 1000px) {
+  .wb-ledger .wb-scroll { grid-template-columns: minmax(0, 1fr); grid-template-areas: "hd" "main" "side"; }
+}
+
+/* 周几表头并进月历卡，不再浮在卡片外 */
+.wb-ledger .wb-week {
+  background: #fff; border: 1px solid #e6ebe4; border-bottom: 0;
+  border-radius: 16px 16px 0 0; padding: 10px 8px 4px; margin-bottom: -12px;
+}
+.wb-ledger .wb-cal { border-radius: 0 0 16px 16px; border-top: 0; }

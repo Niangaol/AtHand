@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Clock3, Eye, EyeOff, Plus, Settings2, Sparkles, Trash2, User, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock3, Eye, EyeOff, Plus, Settings2, Sparkles, Trash2, Wallet } from 'lucide-react';
 import { useRecords } from '../../data/RecordsProvider';
 import { getWeekRange, shiftDate, shortDate } from '../../domain/dates';
 import { isDateKey } from '../../domain/ledger';
@@ -15,7 +15,7 @@ import { categoryStyles } from './categories';
 import { BALANCE_KEY, computeBalance, formatMoney, readBalanceBase } from './balance';
 import type { BalanceBase } from './balance';
 import { useDeviceStatus } from './device';
-import { DeviceSheet, LiveStatusCard, MiniCapsule, StatusBar } from './MiniChrome';
+import { DeviceSheet, LiveStatusCard } from './MiniChrome';
 import './weeklyBill.css';
 
 const weekNames = ['一', '二', '三', '四', '五', '六', '日'];
@@ -38,7 +38,7 @@ function greeting(hour: number) {
 }
 
 /** 图 1：打开周账单即进入的小程序式月历界面。 */
-function WeeklyBill({ onExit }: { onExit: () => void }) {
+function WeeklyBill() {
   const { records, workplaces, today, deleteRecord } = useRecords();
   const [selectedDate, setSelectedDate] = useState(today);
   const [month, setMonth] = useState(() => today.slice(0, 7));
@@ -100,19 +100,17 @@ function WeeklyBill({ onExit }: { onExit: () => void }) {
   }
   function notify(message: string) { setToast(message); }
 
-  return <div className="wb-mini-app">
-    <div className="wb-mini-backdrop" aria-hidden="true"><span className="wb-bg-word">顺手</span><span className="wb-bg-sub">校园生活助理 · 让日子少一点零散</span></div>
-    <div className="wb-phone">
-      <StatusBar status={device} onInfo={() => setDeviceOpen(true)} />
+  return <div className="wb-app wb-ledger">
+    {/* 图 1 主界面 */}
+    <section className="wb-screen active" aria-label="周账单">
+      <div className="wb-scroll">
+        <div className="wb-hd">
+          <button type="button" className="wb-today" onClick={goToday} aria-label="回到今天">今</button>
+          <div className="wb-month"><button type="button" onClick={() => changeMonth(-1)} aria-label="上一个月">‹</button><span>{year}年{number}月</span><button type="button" onClick={() => changeMonth(1)} aria-label="下一个月">›</button></div>
+          <button type="button" className="wb-hd-menu" onClick={() => setMenuOpen((value) => !value)} aria-label="更多" aria-expanded={menuOpen} aria-haspopup="menu"><Settings2 size={17} /></button>
+        </div>
 
-      {/* 图 1 主界面 */}
-      <section className={`wb-screen${lifeOpen ? '' : ' active'}`} aria-label="周账单">
-        <div className="wb-scroll">
-          <div className="wb-hd">
-            <button type="button" className="wb-today" onClick={goToday} aria-label="回到今天">今</button>
-            <div className="wb-month"><button type="button" onClick={() => changeMonth(-1)} aria-label="上一个月">‹</button><span>{year}年{number}月</span><button type="button" onClick={() => changeMonth(1)} aria-label="下一个月">›</button></div>
-            <MiniCapsule onMenu={() => setMenuOpen((value) => !value)} onHome={() => { goToday(); notify('已回到今天'); }} menuOpen={menuOpen} />
-          </div>
+        <div className="wb-col-main">
 
           <div className="wb-greet"><span className="wb-greet-ico"><Sparkles size={17} /></span><div><b>{greeting(new Date().getHours())}，今天也顺手记一笔</b><small>{device.dateText} · 这月已记 {monthRecords.length} 笔</small></div></div>
           <LiveStatusCard status={device} onInfo={() => setDeviceOpen(true)} />
@@ -148,7 +146,9 @@ function WeeklyBill({ onExit }: { onExit: () => void }) {
               {netText ? <span className={`wb-net${net > 0 ? ' plus' : ' minus'}`}>{netText}</span> : null}
             </button>;
           })}</div>
+        </div>
 
+        <div className="wb-col-side">
           <div className="wb-quick">
             <button type="button" className="wb-quick-card" onClick={() => setLifeOpen(true)}>
               <span className="wb-qc-ico orange"><Wallet size={18} /></span>
@@ -178,13 +178,8 @@ function WeeklyBill({ onExit }: { onExit: () => void }) {
             })}</div>
           </div>
         </div>
-        <nav className="wb-tabbar" aria-label="底部导航">
-          <Link className="wb-tab active" to="/ledger"><CalendarDays size={19} />日历</Link>
-          <Link className="wb-tab" to="/monthly"><BarChart3 size={19} />统计</Link>
-          <Link className="wb-tab" to="/workplaces"><Wallet size={19} />薪资</Link>
-          <Link className="wb-tab" to="/settings"><User size={19} />我的</Link>
-        </nav>
-      </section>
+      </div>
+    </section>
 
       {/* 图 3 + 图 4 */}
       <LifeExpenseScreen date={selectedDate} open={lifeOpen} onClose={() => setLifeOpen(false)} onSaved={notify} notify={notify}
@@ -200,13 +195,10 @@ function WeeklyBill({ onExit }: { onExit: () => void }) {
         <Link to="/workplaces" onClick={() => setMenuOpen(false)}>单位管理</Link>
         <Link to="/settings" aria-label="设置" onClick={() => setMenuOpen(false)}><Settings2 size={15} />数据与设置</Link>
         <button type="button" onClick={() => { setMenuOpen(false); setDeviceOpen(true); }}>本机信息</button>
-        <button type="button" onClick={() => { setMenuOpen(false); onExit(); }}>切回桌面版</button>
       </div>
 
-      <DeviceSheet status={device} open={deviceOpen} onClose={() => setDeviceOpen(false)} />
-      <div className={`wb-toast${toast ? ' show' : ''}`} role="status">{toast}</div>
-      <div className="wb-home-bar" />
-    </div>
+    <DeviceSheet status={device} open={deviceOpen} onClose={() => setDeviceOpen(false)} />
+    <div className={`wb-toast${toast ? ' show' : ''}`} role="status">{toast}</div>
   </div>;
 }
 
@@ -232,9 +224,8 @@ function LegacyLedger() {
 }
 
 export function LedgerPage() {
-  const [miniMode, setMiniMode] = useState(true);
   return <>
-    {miniMode ? <WeeklyBill onExit={() => setMiniMode(false)} /> : <div className="wb-back-bar"><span>已切回桌面版 · 原有周明细</span><button type="button" className="button primary compact" onClick={() => setMiniMode(true)}>回到小程序界面</button></div>}
+    <WeeklyBill />
     <LegacyLedger />
   </>;
 }

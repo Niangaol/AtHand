@@ -70,7 +70,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
     <aside className="auth-story" aria-hidden="true">
       <div className="auth-brand"><span className="auth-brand-mark"><Sprout size={24} strokeWidth={1.8} /></span><span>顺手<small>校园个人助手</small></span></div>
       <div className="auth-story-copy">
-        <p className="auth-eyebrow">Paper · Ink · Ledger</p>
         <h1>把零散的校园日子，<br />收进一处。</h1>
         <p className="auth-story-lead">课表、账本、专注、旅记和校园服务，共用一个安静的入口。</p>
         <ul className="auth-points">

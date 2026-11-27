@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, MessageSquare, Sprout } from 'lucide-react';
+import { ArrowUpRight, MessageSquare, Smartphone, Sprout } from 'lucide-react';
 import { assistantNav, navigation, navigationGroups } from './navigation';
 import { useRecords } from '../data/RecordsProvider';
 import { backendMode, gatewayUsername, isGatewayConnected } from '../data/gateway';
@@ -8,12 +8,31 @@ import { backendMode, gatewayUsername, isGatewayConnected } from '../data/gatewa
 /** 窄屏底部 Tab 只展示高频四项（与 App 的首页/账本/日程/我的对齐），其余页面从首页与设置页进入。 */
 const mobilePrimaryPaths = new Set(['/', '/ledger', '/schedule', '/settings']);
 
+const PREVIEW_KEY = 'shunshou.preview.phone';
+
+/**
+ * 手机预览开关：把真实外壳套进 430px 机身里看移动端效果。
+ * 只切 body 上的 data-preview，不复制页面、不改路由，所以看到的就是真页面。
+ */
+function usePhonePreview() {
+  const [phone, setPhone] = useState(() => {
+    try { return window.localStorage.getItem(PREVIEW_KEY) === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    if (phone) document.body.dataset.preview = 'phone';
+    else delete document.body.dataset.preview;
+    try { window.localStorage.setItem(PREVIEW_KEY, phone ? '1' : '0'); } catch { /* 隐私模式只在本页生效 */ }
+  }, [phone]);
+  return [phone, setPhone] as const;
+}
+
 export function Shell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { records, error, blocked } = useRecords();
   const [signedIn, setSignedIn] = useState(() => isGatewayConnected());
   const [accountName, setAccountName] = useState(() => gatewayUsername());
+  const [phonePreview, setPhonePreview] = usePhonePreview();
   useEffect(() => {
     const sync = () => { setSignedIn(isGatewayConnected()); setAccountName(gatewayUsername()); };
     sync();
@@ -64,7 +83,7 @@ export function Shell() {
         : <Link className="profile" to="/login"><span className="avatar">登</span><span>还没有登录<small>登录或注册</small></span></Link>}</div>
     </aside>
     <div className="workspace">
-      <header className="topbar"><span>我的校园生活 <span className="topbar-divider">/</span> <strong>{pageName}</strong></span><div className="topbar-actions"><Link className="command-trigger" to="/assistant" aria-label="问助手"><MessageSquare size={15} strokeWidth={1.7} /><span className="command-copy"><strong>问助手</strong><span>查安排、记账、开专注</span></span><kbd>Ctrl K</kbd></Link><span className="demo-badge"><span />{ledgerBadge}</span></div></header>
+      <header className="topbar"><span>我的校园生活 <span className="topbar-divider">/</span> <strong>{pageName}</strong></span><div className="topbar-actions"><button type="button" className="preview-toggle" aria-pressed={phonePreview} title="按手机尺寸预览当前页面" onClick={() => setPhonePreview(!phonePreview)}><Smartphone size={13} strokeWidth={1.9} />{phonePreview ? '退出预览' : '手机预览'}</button><Link className="command-trigger" to="/assistant" aria-label="问助手"><MessageSquare size={15} strokeWidth={1.7} /><span className="command-copy"><strong>问助手</strong><span>查安排、记账、开专注</span></span><kbd>Ctrl K</kbd></Link><span className="demo-badge"><span />{ledgerBadge}</span></div></header>
       <main id="main-content" className="main-content" tabIndex={-1} ref={mainRef}>
         {error ? <div className="storage-warning" role="alert">{error}{blocked ? <Link to="/settings">前往数据设置</Link> : null}</div> : null}
         <Outlet />
