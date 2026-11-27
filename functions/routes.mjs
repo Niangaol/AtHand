@@ -5,6 +5,7 @@ import { reconcileCalendar } from './calendar.mjs';
 import { createCampus } from './campus.mjs';
 import { createAccount } from './account.mjs';
 import { createAssistant } from './assistant.mjs';
+import { isLedgerState } from './vendor/domain.mjs';
 import {
   ApiError, DOCS, fail, json, storageError, readJson, rowsOf, createDocs,
   sha256Hex,
@@ -35,8 +36,7 @@ function validLedger(value) {
   return Boolean(value) && typeof value === 'object' && value.version === 1
     && Array.isArray(value.records) && Array.isArray(value.workplaces)
     && value.records.length <= 20000 && value.workplaces.length <= 2000
-    && Boolean(value.settings) && typeof value.settings === 'object'
-    && Number.isSafeInteger(value.settings.hourlyRateCents);
+    && isLedgerState(value);
 }
 
 export function application({ db, fetch: transport = globalThis.fetch, env = { get: readEnv } }) {

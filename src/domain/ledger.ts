@@ -1,5 +1,5 @@
 import { toDateKey } from './dates.ts';
-import { MAX_PHOTOS, MAX_PHOTO_CHARS, expenseCategories } from './records.ts';
+import { MAX_LEGACY_PHOTO_CHARS, MAX_PHOTOS, expenseCategories } from './records.ts';
 import type { ExpenseCategory, RecordEntry, Workplace } from './records.ts';
 
 export type RecordDraft = {
@@ -34,7 +34,7 @@ export function buildRecord(draft: RecordDraft, workplaces: readonly Workplace[]
   const photos = draft.photos?.length ? draft.photos : undefined;
   if (photos) {
     if (photos.length > MAX_PHOTOS) throw new Error(`单条记录最多添加 ${MAX_PHOTOS} 张照片。`);
-    if (!photos.every((photo) => photo.startsWith('data:image/') && photo.length <= MAX_PHOTO_CHARS)) throw new Error('照片体积超出上限，请换一张或裁剪后重试。');
+    if (!photos.every((photo) => photo.startsWith('data:image/') && photo.length <= MAX_LEGACY_PHOTO_CHARS)) throw new Error('照片体积超出上限，请换一张或裁剪后重试。');
   }
   const base = { id, date: draft.date, source: 'manual' as const, ...(photos ? { photos } : {}) };
   if (draft.type === 'expense') {

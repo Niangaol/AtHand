@@ -6,7 +6,7 @@ import { buildRecord, buildWorkplace, parseAmount } from '../domain/ledger';
 import type { RecordDraft } from '../domain/ledger';
 import type { LedgerState, RecordEntry } from '../domain/records';
 import { backendNoun, clearGatewayAccountChanged, clearGatewaySession, gatewayAccountChanged, gatewayFetch, isGatewayConnected } from './gateway';
-import { createInitialState, isLedgerState, loadLedger, saveLedger, STORAGE_KEY } from './storage';
+import { createInitialState, isLedgerState, ledgerByteLength, loadLedger, MAX_SYNC_LEDGER_BYTES, saveLedger, STORAGE_KEY } from './storage';
 
 type Result = { ok: true } | { ok: false; message: string };
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
@@ -29,6 +29,7 @@ type RecordsData = LedgerState & {
 };
 const RecordsContext = createContext<RecordsData | null>(null);
 const PENDING_KEY = 'shunshou.ledger.pending';
+const SYNC_TOO_LARGE = '照片总量太大，云端无法一次保存。请先删掉几张照片，再重新保存。';
 const browserStorage: StoragePort = {
   getItem: (key) => window.localStorage.getItem(key),
   setItem: (key, value) => window.localStorage.setItem(key, value),
@@ -89,6 +90,12 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
 
   async function pushRemote(force = false): Promise<Result> {
     if (!isGatewayConnected()) return { ok: false, message: `还没有连接${noun}。` };
+    if (ledgerByteLength(stateRef.current) > MAX_SYNC_LEDGER_BYTES) {
+      pendingRef.current = true;
+      writePending(true);
+      setRemote({ status: 'error', message: SYNC_TOO_LARGE, updatedAt: updatedAtRef.current });
+      return { ok: false, message: SYNC_TOO_LARGE };
+    }
     setRemote({ status: 'syncing', message: `正在保存到${noun}…`, updatedAt: updatedAtRef.current });
     try {
       const response = await gatewayFetch('/api/ledger', {
@@ -227,7 +234,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function commit(change: (previous: LedgerState) => LedgerState, recovery = false): Promise<Result> {
+  async function commit(change: (previous: LedgerState) => LedgerState, recovery = false, checkSyncSize = false): Promise<Result> {
     if (savingRef.current) return { ok: false, message: '上一笔操作正在保存，请稍候再试。' };
     savingRef.current = true;
     setSaving(true);
@@ -236,6 +243,9 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       if (!navigator.locks) throw new Error('当前浏览器不支持安全的本地写入，请使用新版 Chrome、Edge、Firefox 或 Safari，并通过本机地址或 HTTPS 打开。');
       const result = await navigator.locks.request(STORAGE_KEY, async () => {
         const next = change(stateRef.current);
+        if (checkSyncSize && isGatewayConnected() && ledgerByteLength(next) > MAX_SYNC_LEDGER_BYTES) {
+          throw new Error(SYNC_TOO_LARGE);
+        }
         rawRef.current = storage === browserStorage ? await guardedSave(STORAGE_KEY, rawRef.current, () => saveLedger(storage, next, rawRef.current), recovery) : saveLedger(storage, next, rawRef.current);
         stateRef.current = next;
         setState(next);
@@ -261,7 +271,7 @@ export function RecordsProvider({ initialState, today: fixedToday, storage = bro
       const record = buildRecord(draft, previous.workplaces, id ?? crypto.randomUUID());
       const records = previous.records.filter((item) => item.source !== 'demo' && item.id !== id);
       return { ...previous, records: [...records, record], workplaces: previous.workplaces.map((unit) => record.type === 'work' && unit.id === record.workplaceId ? { ...unit, source: 'manual' } : unit) };
-    });
+    }, false, true);
   }
   function deleteRecord(id: string): Promise<Result> {
     return commit((previous) => ({ ...previous, records: previous.records.filter((record) => record.id !== id) }));

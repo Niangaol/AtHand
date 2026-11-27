@@ -250,7 +250,7 @@ test('账号注销：缺二次确认被拒，密码错误被拒，确认后清�
   const bob = await register(handle, 'bob', 'password-2', 'library-pc');
   const aliceLedger = {
     version: 1,
-    records: [{ id: 'alice-1', type: 'expense', date: '2026-11-22', title: '午饭', amountCents: 1850, category: '吃饭' }],
+    records: [{ id: 'alice-1', type: 'expense', date: '2026-11-22', title: '午饭', amountCents: 1850, source: 'manual', category: '吃饭' }],
     workplaces: [],
     settings: { hourlyRateCents: 3000 },
   };
@@ -313,8 +313,8 @@ test('账号信息与数据统计：返回账号、创建时间和当前会话',
   const ledger = {
     version: 1,
     records: [
-      { id: 'r1', type: 'expense', date: '2026-11-22', title: '午饭', amountCents: 1850, category: '吃饭' },
-      { id: 'r2', type: 'expense', date: '2026-11-22', title: '晚饭', amountCents: 2100, category: '吃饭' },
+      { id: 'r1', type: 'expense', date: '2026-11-22', title: '午饭', amountCents: 1850, source: 'manual', category: '吃饭' },
+      { id: 'r2', type: 'expense', date: '2026-11-22', title: '晚饭', amountCents: 2100, source: 'manual', category: '吃饭' },
     ],
     workplaces: [],
     settings: { hourlyRateCents: 3000 },

@@ -1,10 +1,16 @@
 import { createDemoRecords, demoWorkplaces } from './demo.ts';
 import { isDateKey } from '../domain/ledger.ts';
-import { MAX_PHOTOS, MAX_PHOTO_CHARS, expenseCategories } from '../domain/records.ts';
+import { MAX_LEGACY_PHOTO_CHARS, MAX_PHOTOS, expenseCategories } from '../domain/records.ts';
 import type { LedgerState } from '../domain/records.ts';
 
 export const STORAGE_KEY = 'shunshou.ledger.v1';
+// 云端 readJson 上限 4 MB；给 JSON 包装与多字节中文预留空间。
+export const MAX_SYNC_LEDGER_BYTES = 3_500_000;
 type StoragePort = Pick<Storage, 'getItem' | 'setItem'>;
+
+export function ledgerByteLength(state: LedgerState): number {
+  return new TextEncoder().encode(JSON.stringify(state)).length;
+}
 
 export function createInitialState(today: string, examples = true): LedgerState {
   return { version: 1, records: examples ? createDemoRecords(today) : [], workplaces: examples ? [...demoWorkplaces] : [], settings: { hourlyRateCents: 2000 } };
@@ -34,7 +40,7 @@ export function isLedgerState(value: unknown): value is LedgerState {
       || !Number.isSafeInteger(record.amountCents) || Number(record.amountCents) < 0
       || !['demo', 'manual', 'school', 'import'].includes(String(record.source))) return false;
     if (record.photos !== undefined && (!Array.isArray(record.photos) || record.photos.length > MAX_PHOTOS
-      || !record.photos.every((photo) => typeof photo === 'string' && photo.startsWith('data:image/') && photo.length <= MAX_PHOTO_CHARS))) return false;
+      || !record.photos.every((photo) => typeof photo === 'string' && photo.startsWith('data:image/') && photo.length <= MAX_LEGACY_PHOTO_CHARS))) return false;
     if (record.type === 'expense') return Number(record.amountCents) > 0 && Number(record.amountCents) <= 999999999
       && expenseCategories.includes(record.category as typeof expenseCategories[number]);
     if (record.type !== 'work') return false;

@@ -35,8 +35,26 @@ export async function imageToDataUrl(file: File, maxEdge = 720): Promise<string>
   });
 }
 
-export async function filesToPhotos(files: readonly File[]): Promise<string[]> {
-  const images = files.filter((file) => file.type.startsWith('image/'));
-  const result = await Promise.all(images.slice(0, MAX_PHOTOS).map((file) => imageToDataUrl(file).catch(() => null)));
-  return result.filter((value): value is string => value !== null);
+export type PhotoImportResult = { photos: string[]; error: string };
+
+export async function filesToPhotos(
+  files: readonly File[],
+  convert: (file: File) => Promise<string> = imageToDataUrl,
+): Promise<PhotoImportResult> {
+  const images = files.filter((file) => file.type.startsWith('image/')).slice(0, MAX_PHOTOS);
+  if (!images.length) return { photos: [], error: files.length ? '只能添加图片文件。' : '' };
+  const results = await Promise.all(images.map(async (file) => {
+    try {
+      return { photo: await convert(file), error: '' };
+    } catch (reason) {
+      return { photo: '', error: reason instanceof Error ? reason.message : '读取照片失败' };
+    }
+  }));
+  const photos = results.map((item) => item.photo).filter(Boolean);
+  const errors = results.map((item) => item.error).filter(Boolean);
+  const detail = [...new Set(errors)][0] ?? '';
+  return {
+    photos,
+    error: errors.length ? `${errors.length} 张照片未能添加${detail ? `：${detail}` : '。'}` : '',
+  };
 }

@@ -32,6 +32,7 @@ function EntryForm({ record }: { record?: RecordEntry }) {
     hourlyRate: ((record?.type === 'work' ? record.hourlyRateCents : workplaces[0]?.hourlyRateCents ?? settings.hourlyRateCents) / 100).toFixed(2),
     amount: record?.type === 'expense' ? (record.amountCents / 100).toFixed(2) : '',
     category: record?.type === 'expense' ? record.category : '吃饭',
+    photos: record?.photos,
   }));
   const workRef = useRef<HTMLButtonElement>(null);
   const expenseRef = useRef<HTMLButtonElement>(null);

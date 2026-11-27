@@ -186,7 +186,8 @@ export function WorkTimeSheet({ date, open, onClose, onSaved }: {
         <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={async (event) => {
           const picked = Array.from(event.target.files ?? []);
           const converted = await filesToPhotos(picked);
-          if (converted.length) setPhotos((list) => [...list, ...converted].slice(0, MAX_PHOTOS));
+          if (converted.photos.length) setPhotos((list) => [...list, ...converted.photos].slice(0, MAX_PHOTOS));
+          if (converted.error) setError(converted.error);
           event.target.value = '';
         }} />
       </div>

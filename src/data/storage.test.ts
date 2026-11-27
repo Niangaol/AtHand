@@ -23,6 +23,18 @@ describe('versioned local ledger', () => {
     expect(loaded.state.records).toEqual([]);
     expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
   });
+  it('still loads photos saved before the per-photo limit was tightened', () => {
+    const state = createInitialState('2026-11-20', false);
+    state.records = [{
+      id: 'old-photo', date: '2026-11-20', title: '旧照片', amountCents: 1800,
+      source: 'manual', type: 'expense', category: '吃饭',
+      photos: [`data:image/jpeg;base64,${'a'.repeat(800_000)}`],
+    }];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const loaded = loadLedger(localStorage, '2026-11-20');
+    expect(loaded.error).toBe('');
+    expect(loaded.state.records[0].photos).toHaveLength(1);
+  });
   it('rejects malformed persisted money or date fields', () => {
     const state = createInitialState('2026-11-20');
     state.records[0].amountCents = -1;

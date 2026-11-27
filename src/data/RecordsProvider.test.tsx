@@ -1,12 +1,21 @@
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RecordsProvider, useRecords } from './RecordsProvider';
 import { createInitialState, STORAGE_KEY } from './storage';
 import type { RecordDraft } from '../domain/ledger';
+import type { LedgerState } from '../domain/records';
 
 const draft: RecordDraft = { type: 'work', date: '2026-11-20', title: '真实排班', workplaceId: 'tea', startTime: '14:00', endTime: '17:00', nextDay: false, duration: '', hourlyRate: '20', amount: '', category: '吃饭' };
+const expenseDraft: RecordDraft = { type: 'expense', date: '2026-11-20', title: '午饭', workplaceId: '', startTime: '', endTime: '', nextDay: false, duration: '', hourlyRate: '', amount: '20', category: '吃饭' };
 beforeEach(() => localStorage.clear());
+afterEach(() => vi.unstubAllGlobals());
+
+function withCloudSession(): void {
+  localStorage.setItem('shunshou.gateway.url', 'https://cloud.test/functions/v1/app');
+  localStorage.setItem('shunshou.gateway.token', 'session-token');
+  localStorage.setItem('shunshou.gateway.expiresAt', String(Date.now() + 3600_000));
+}
 const wrapper = ({ children }: { children: ReactNode }) => <RecordsProvider today="2026-11-20">{children}</RecordsProvider>;
 
 describe('real ledger operations', () => {
@@ -53,6 +62,53 @@ describe('real ledger operations', () => {
     await act(async () => { await result.current.clearExamples(); });
     expect(result.current.records[0].title).toBe('真实排班');
     expect(result.current.workplaces.map((unit) => unit.id)).toEqual(['tea']);
+  });
+  it('refuses a new save that would make the cloud request too large', async () => {
+    withCloudSession();
+    const photo = `data:image/jpeg;base64,${'a'.repeat(399_900)}`;
+    const photos = [photo, photo, photo, photo];
+    const state: LedgerState = {
+      ...createInitialState('2026-11-20', false),
+      records: [
+        { id: 'r1', date: '2026-11-20', title: '午饭', amountCents: 1800, source: 'manual', type: 'expense', category: '吃饭', photos },
+        { id: 'r2', date: '2026-11-20', title: '晚饭', amountCents: 2200, source: 'manual', type: 'expense', category: '吃饭', photos },
+      ],
+    };
+    const { result } = renderHook(useRecords, {
+      wrapper: ({ children }) => <RecordsProvider today="2026-11-20" initialState={state}>{children}</RecordsProvider>,
+    });
+
+    await act(async () => {
+      const outcome = await result.current.saveRecord({ ...expenseDraft, photos });
+      expect(outcome.ok).toBe(false);
+      if (!outcome.ok) expect(outcome.message).toContain('照片总量');
+    });
+    expect(result.current.records).toHaveLength(2);
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+  it('does not send an oversized ledger to the cloud', async () => {
+    withCloudSession();
+    const photo = `data:image/jpeg;base64,${'a'.repeat(399_900)}`;
+    const photos = [photo, photo, photo, photo];
+    const state: LedgerState = {
+      ...createInitialState('2026-11-20', false),
+      records: [
+        { id: 'r1', date: '2026-11-20', title: '午饭', amountCents: 1800, source: 'manual', type: 'expense', category: '吃饭', photos },
+        { id: 'r2', date: '2026-11-20', title: '晚饭', amountCents: 2200, source: 'manual', type: 'expense', category: '吃饭', photos },
+        { id: 'r3', date: '2026-11-20', title: '夜宵', amountCents: 1200, source: 'manual', type: 'expense', category: '吃饭', photos },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'body_too_large' }), { status: 413 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(useRecords, {
+      wrapper: ({ children }) => <RecordsProvider today="2026-11-20" initialState={state}>{children}</RecordsProvider>,
+    });
+
+    let outcome: { ok: boolean; message?: string } = { ok: true };
+    await act(async () => { outcome = await result.current.uploadLocalToRemote(); });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.message).toContain('照片总量');
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(0);
   });
   it('does not change state after a failed disk write', async () => {
     const storage = { getItem: () => null, setItem: () => { throw new Error('quota'); } };

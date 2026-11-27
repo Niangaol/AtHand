@@ -154,7 +154,7 @@ test('站点没有配置模型时 chat 返回 503 assistant_not_configured', asy
 });
 
 test('没有模型时 briefing 仍返回规则版，且同一用户的助手实例跨请求复用', async () => {
-  const handle = application({ db: createFakeDb() });
+  const handle = application({ db: createFakeDb(), env: { get: () => '' } });
   const { token } = await register(handle);
 
   const first = await call(handle, '/api/assistant/briefing?scope=day', { token });
@@ -177,6 +177,23 @@ test('没有模型时 briefing 仍返回规则版，且同一用户的助手实�
   await new Promise((resolve) => { setTimeout(resolve, 5); });
   const fresh = await call(handle, '/api/assistant/briefing?scope=day&fresh=1', { token });
   assert.notEqual((await fresh.json()).generatedAt, firstBody.generatedAt);
+});
+
+test('云端拒绝网页无法识别的账本照片', async () => {
+  const handle = application({ db: createFakeDb() });
+  const { token } = await register(handle, 'ledger-shape-tester');
+  const ledger = {
+    version: 1,
+    records: [{
+      id: 'r1', date: '2026-11-20', title: '午饭', amountCents: 1800,
+      source: 'manual', type: 'expense', category: '吃饭',
+      photos: ['data:image/jpeg;base64,1', 'data:image/jpeg;base64,2', 'data:image/jpeg;base64,3', 'data:image/jpeg;base64,4', 'data:image/jpeg;base64,5'],
+    }],
+    workplaces: [],
+    settings: { hourlyRateCents: 2000 },
+  };
+  const response = await call(handle, '/api/ledger', { method: 'PUT', token, body: { ledger } });
+  assert.equal(response.status, 400);
 });
 
 test('未识别的助手接口返回 404，方法不对返回 405', async () => {

@@ -30,6 +30,11 @@ describe('record input boundary', () => {
   it('builds a categorized expense with a useful default title', () => {
     expect(buildRecord({ ...base, type: 'expense', amount: '18.50', category: '吃饭' }, [], 'e')).toMatchObject({ type: 'expense', title: '吃饭', amountCents: 1850, category: '吃饭' });
   });
+  it('keeps a legacy photo when an old record is edited and saved', () => {
+    const photo = `data:image/jpeg;base64,${'a'.repeat(800_000)}`;
+    const record = buildRecord({ ...base, type: 'expense', amount: '18.50', photos: [photo] }, [], 'e');
+    expect(record.photos).toEqual([photo]);
+  });
   it('validates unit names and rates', () => {
     expect(buildWorkplace(' 家教 ', '80', 'u')).toMatchObject({ name: '家教', hourlyRateCents: 8000, source: 'manual' });
     expect(() => buildWorkplace('  ', '20', 'u')).toThrow('名称');

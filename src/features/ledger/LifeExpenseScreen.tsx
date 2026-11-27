@@ -273,7 +273,8 @@ export function LifeExpenseScreen({ date, open, onClose, onSaved, notify, balanc
     <input ref={photoRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={async (event) => {
       const picked = Array.from(event.target.files ?? []);
       const converted = await filesToPhotos(picked);
-      if (converted.length) setPhotos((list) => [...list, ...converted].slice(0, MAX_PHOTOS));
+      if (converted.photos.length) setPhotos((list) => [...list, ...converted.photos].slice(0, MAX_PHOTOS));
+      if (converted.error) setError(converted.error);
       event.target.value = '';
     }} />
     {!isBalance && photos.length ? <div className="wb-ledger-photos">{photos.map((src, index) => <div className="wb-photo-thumb" key={index}><img src={src} alt={`照片 ${index + 1}`} /><button type="button" onClick={() => setPhotos((list) => list.filter((_, i) => i !== index))} aria-label="删除照片"><X size={12} /></button></div>)}</div> : null}
