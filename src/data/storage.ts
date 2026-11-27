@@ -1,5 +1,6 @@
 import { createDemoRecords, demoWorkplaces } from './demo.ts';
 import { isDateKey } from '../domain/ledger.ts';
+import { MAX_PHOTOS, MAX_PHOTO_CHARS, expenseCategories } from '../domain/records.ts';
 import type { LedgerState } from '../domain/records.ts';
 
 export const STORAGE_KEY = 'shunshou.ledger.v1';
@@ -32,8 +33,10 @@ export function isLedgerState(value: unknown): value is LedgerState {
       || typeof record.date !== 'string' || !isDateKey(record.date)
       || !Number.isSafeInteger(record.amountCents) || Number(record.amountCents) < 0
       || !['demo', 'manual', 'school', 'import'].includes(String(record.source))) return false;
-    if (record.photos !== undefined && (!Array.isArray(record.photos) || !record.photos.every((photo) => typeof photo === 'string' && photo.startsWith('data:image/') && photo.length <= 1_500_000))) return false;
-    if (record.type === 'expense') return Number(record.amountCents) > 0 && Number(record.amountCents) <= 999999999 && text(record.category, 20);
+    if (record.photos !== undefined && (!Array.isArray(record.photos) || record.photos.length > MAX_PHOTOS
+      || !record.photos.every((photo) => typeof photo === 'string' && photo.startsWith('data:image/') && photo.length <= MAX_PHOTO_CHARS))) return false;
+    if (record.type === 'expense') return Number(record.amountCents) > 0 && Number(record.amountCents) <= 999999999
+      && expenseCategories.includes(record.category as typeof expenseCategories[number]);
     if (record.type !== 'work') return false;
     return units.some((unit) => unit.id === record.workplaceId)
       && positiveInteger(record.hourlyRateCents) && record.hourlyRateCents <= 999999999

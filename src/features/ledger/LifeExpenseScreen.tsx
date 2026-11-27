@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Check, ChevronDown, ChevronRight, Clock3, CreditCard, Delete, Grid2X2, Mic, Pencil, Plus, Search, SquarePen, X } from 'lucide-react';
 import { useRecords } from '../../data/RecordsProvider';
+import { MAX_PHOTOS } from '../../domain/records';
 import { parseAmount } from '../../domain/ledger';
 import type { RecordDraft } from '../../domain/ledger';
 import { clearBalanceBase, computeBalance, formatBalance, formatMoney, parseBalanceInput, writeBalanceBase } from './balance';
@@ -272,7 +273,7 @@ export function LifeExpenseScreen({ date, open, onClose, onSaved, notify, balanc
     <input ref={photoRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={async (event) => {
       const picked = Array.from(event.target.files ?? []);
       const converted = await filesToPhotos(picked);
-      if (converted.length) setPhotos((list) => [...list, ...converted].slice(0, 6));
+      if (converted.length) setPhotos((list) => [...list, ...converted].slice(0, MAX_PHOTOS));
       event.target.value = '';
     }} />
     {!isBalance && photos.length ? <div className="wb-ledger-photos">{photos.map((src, index) => <div className="wb-photo-thumb" key={index}><img src={src} alt={`照片 ${index + 1}`} /><button type="button" onClick={() => setPhotos((list) => list.filter((_, i) => i !== index))} aria-label="删除照片"><X size={12} /></button></div>)}</div> : null}

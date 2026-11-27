@@ -1,6 +1,17 @@
 export const expenseCategories = ['吃饭', '交通', '日用', '娱乐', '学习', '其他', '日用品', '餐饮', '零食', '水果', '医疗', '配饰', '旅行', '衣服', '饮料'] as const;
-/** 内置分类 + 用户自建分类（周账单的分类面板可添加自定义名称）。 */
+/**
+ * 分类面板允许用户自建名称，但落库的分类必须落在 expenseCategories 之内：
+ * 自建名称由 buildRecord 记进备注、分类收敛到「其他」，isLedgerState 只认白名单，
+ * 否则网页、Android 与云端三处共用的账本契约会被任意文本撑开。
+ */
 export type ExpenseCategory = string;
+
+/**
+ * 照片随账本 JSON 一起存 localStorage，并与云端 / Android 共用同一份校验：
+ * 单条最多 4 张，单张压缩后 base64 不超过 400 KB 字符（约 300 KB 原图）。
+ */
+export const MAX_PHOTOS = 4;
+export const MAX_PHOTO_CHARS = 400_000;
 
 type BaseRecord = {
   id: string;

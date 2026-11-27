@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Camera, Check, Clock, Coffee, Coins, Image as ImageIcon, Pencil, SlidersHorizontal, X } from 'lucide-react';
 import { useRecords } from '../../data/RecordsProvider';
+import { MAX_PHOTOS } from '../../domain/records';
 import type { RecordDraft } from '../../domain/ledger';
 import { filesToPhotos } from './photo';
 import { ensureWorkplace } from './workplace';
@@ -185,7 +186,7 @@ export function WorkTimeSheet({ date, open, onClose, onSaved }: {
         <input ref={fileRef} type="file" accept="image/*" capture="environment" multiple hidden onChange={async (event) => {
           const picked = Array.from(event.target.files ?? []);
           const converted = await filesToPhotos(picked);
-          if (converted.length) setPhotos((list) => [...list, ...converted]);
+          if (converted.length) setPhotos((list) => [...list, ...converted].slice(0, MAX_PHOTOS));
           event.target.value = '';
         }} />
       </div>

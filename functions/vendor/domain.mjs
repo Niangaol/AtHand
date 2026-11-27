@@ -6,7 +6,7 @@ var __export = (target, all) => {
 };
 
 // src/domain/records.ts
-var expenseCategories = ["\u5403\u996D", "\u4EA4\u901A", "\u65E5\u7528", "\u5A31\u4E50", "\u5B66\u4E60", "\u5176\u4ED6"];
+var expenseCategories = ["\u5403\u996D", "\u4EA4\u901A", "\u65E5\u7528", "\u5A31\u4E50", "\u5B66\u4E60", "\u5176\u4ED6", "\u65E5\u7528\u54C1", "\u9910\u996E", "\u96F6\u98DF", "\u6C34\u679C", "\u533B\u7597", "\u914D\u9970", "\u65C5\u884C", "\u8863\u670D", "\u996E\u6599"];
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};

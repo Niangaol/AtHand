@@ -1,4 +1,5 @@
 import { toDateKey } from './dates.ts';
+import { MAX_PHOTOS, MAX_PHOTO_CHARS, expenseCategories } from './records.ts';
 import type { ExpenseCategory, RecordEntry, Workplace } from './records.ts';
 
 export type RecordDraft = {
@@ -30,10 +31,21 @@ export function buildWorkplace(name: string, rate: string, id: string): Workplac
 export function buildRecord(draft: RecordDraft, workplaces: readonly Workplace[], id: string): RecordEntry {
   if (!isDateKey(draft.date)) throw new Error('请填写 2000 至 2100 年之间的有效日期。');
   if (draft.title.trim().length > 100) throw new Error('备注不能超过 100 个字符。');
-  const base = { id, date: draft.date, source: 'manual' as const, ...(draft.photos?.length ? { photos: draft.photos } : {}) };
+  const photos = draft.photos?.length ? draft.photos : undefined;
+  if (photos) {
+    if (photos.length > MAX_PHOTOS) throw new Error(`单条记录最多添加 ${MAX_PHOTOS} 张照片。`);
+    if (!photos.every((photo) => photo.startsWith('data:image/') && photo.length <= MAX_PHOTO_CHARS)) throw new Error('照片体积超出上限，请换一张或裁剪后重试。');
+  }
+  const base = { id, date: draft.date, source: 'manual' as const, ...(photos ? { photos } : {}) };
   if (draft.type === 'expense') {
-    if (!draft.category.trim() || draft.category.trim().length > 20) throw new Error('请选择支出分类。');
-    return { ...base, type: 'expense', title: draft.title.trim() || draft.category.trim(), category: draft.category.trim(), amountCents: parseAmount(draft.amount) };
+    const requested = draft.category.trim();
+    if (!requested) throw new Error('请选择支出分类。');
+    // 分类面板允许自建名称，但落库只认白名单：自建名记进备注，分类收敛到「其他」，
+    // 这样网页、Android 与云端共用同一份账本契约，不会被任意文本撑开。
+    const known = expenseCategories.includes(requested as typeof expenseCategories[number]);
+    const category = known ? requested : '其他';
+    const title = [draft.title.trim(), known ? '' : requested].filter(Boolean).join(' · ').slice(0, 100) || category;
+    return { ...base, type: 'expense', title, category, amountCents: parseAmount(draft.amount) };
   }
   const workplace = workplaces.find((item) => item.id === draft.workplaceId);
   if (!workplace) throw new Error('请先选择或添加兼职单位。');
